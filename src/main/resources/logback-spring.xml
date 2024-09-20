@@ -1,0 +1,26 @@
+<configuration>
+        <!-- Console Appender -->
+        <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+                <encoder>
+                        <pattern>%d{yyyy-MM-dd HH:mm:ss} %-5level [%thread] %logger{36} - %msg%n</pattern>
+                </encoder>
+        </appender>
+
+        <!-- File Appender -->
+        <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+                <file>demo.log</file>
+                <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+                        <fileNamePattern>demo-%d{yyyy-MM-dd}.log</fileNamePattern>
+                        <maxHistory>30</maxHistory>                        <!-- Keep logs for 30 days -->
+                </rollingPolicy>
+                <encoder>
+                        <pattern>%d{yyyy-MM-dd HH:mm:ss} %-5level [%thread] %logger{36} - %msg%n</pattern>
+                </encoder>
+        </appender>
+
+        <!-- Root Logger Configuration -->
+        <root level="INFO">
+                <appender-ref ref="STDOUT"/>
+                <appender-ref ref="FILE"/>
+        </root>
+</configuration>
