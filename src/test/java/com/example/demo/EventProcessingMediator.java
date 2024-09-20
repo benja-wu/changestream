@@ -1,13 +1,16 @@
 package com.example.demo;
 
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
-
 import org.bson.BsonDocument;
 import org.bson.Document;
 import org.junit.jupiter.api.BeforeEach;
+import static org.mockito.ArgumentMatchers.anyDouble;
+import static org.mockito.ArgumentMatchers.anyString;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import org.mockito.MockitoAnnotations;
 
 import com.example.demo.metrics.PrometheusMetricsConfig;

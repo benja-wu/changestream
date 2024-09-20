@@ -53,7 +53,7 @@ public class MongoConfig {
 
         // Bean configuration for the main collection that DemoApplication watches
         @Bean
-        public MongoCollection<Document> mongoCollection(MongoClient mongoClient) {
+        public MongoCollection<Document> changestreamCollection(MongoClient mongoClient) {
                 return mongoClient.getDatabase(dbName).getCollection(collName, Document.class);
         }
 }

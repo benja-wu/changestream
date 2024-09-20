@@ -1,10 +1,9 @@
 
 package com.example.demo;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 import java.util.concurrent.TimeUnit;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 

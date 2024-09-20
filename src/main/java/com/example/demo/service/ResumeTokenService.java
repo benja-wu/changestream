@@ -6,6 +6,7 @@ import org.bson.BsonDocument;
 import org.bson.Document;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 import com.mongodb.client.MongoCollection;
@@ -17,7 +18,7 @@ public class ResumeTokenService {
         private final Logger LOGGER = LoggerFactory.getLogger(ResumeTokenService.class);
         private final MongoCollection<Document> resumeTokenCollection;
 
-        public ResumeTokenService(MongoCollection<Document> resumeTokenCollection) {
+        public ResumeTokenService(@Qualifier("resumeTokenCollection") MongoCollection<Document> resumeTokenCollection) {
                 this.resumeTokenCollection = resumeTokenCollection;
         }
 

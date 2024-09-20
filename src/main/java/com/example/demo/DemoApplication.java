@@ -9,6 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Configurable;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -36,7 +37,8 @@ public class DemoApplication {
     private EventProcessingMediator mediator;
 
     @Autowired
-    private MongoCollection<Document> mongoCollection; // Inject MongoCollection from MongoConfig
+    @Qualifier("changestreamCollection")
+    private MongoCollection<Document> changeStreamCollection; // Inject MongoCollection from MongoConfig
 
     private ExecutorService executorService;
     private HTTPServer httpServer; // Add HTTPServer instance
@@ -68,8 +70,8 @@ public class DemoApplication {
 
             // Start the change stream with or without a resume token
             ChangeStreamIterable<Document> changeStream = resumeToken != null
-                    ? mongoCollection.watch().resumeAfter(resumeToken)
-                    : mongoCollection.watch();
+                    ? changeStreamCollection.watch().resumeAfter(resumeToken)
+                    : changeStreamCollection.watch();
 
             changeStream.forEach(changeStreamDocument -> {
                 try {
