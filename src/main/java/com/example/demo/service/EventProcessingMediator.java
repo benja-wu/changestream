@@ -160,48 +160,39 @@ public class EventProcessingMediator {
          * MongoNotPrimaryException is not need to handle manually
          */
         public void changeStreamProcessWithRetry() {
-                try {
-                        BsonDocument resumeToken = getLatestResumeToken();
-                        ChangeStreamIterable<Document> changeStream = changeStreamIterator(resumeToken);
+                BsonDocument resumeToken = getLatestResumeToken();
+                ChangeStreamIterable<Document> changeStream = changeStreamIterator(resumeToken);
 
-                        // Start the change stream with or without a resume token
-                        changeStream.forEach(event -> {
-                                try {
-                                        // Get event's unique _id
-                                        LOGGER.info("get one event and start handle {}, first try", event);
+                // Start the change stream with or without a resume token
+                changeStream.forEach(event -> {
+                        // Get event's unique _id
+                        LOGGER.info("get one event and start handle {}, first try", event);
 
-                                        executor.submit(() -> {
-                                                int attempt = 0;
-                                                long delay = initialDelayMS;
-                                                while (attempt < maxAttempts) {
-                                                        try {
-                                                                processEvent(event);
-                                                                break;
-                                                        } catch (MongoTimeoutException | MongoSocketReadException
-                                                                        | MongoSocketWriteException
-                                                                        | MongoCommandException
-                                                                        | MongoWriteConcernException e) {
-                                                                // Retry on specific exceptions that require manual
-                                                                // handling
-                                                                attempt++;
-                                                                LOGGER.warn("Attempt {} failed for event {}. Retrying in {} ms...",
-                                                                                attempt, event, delay, e);
-                                                                retrySleep(delay);
-                                                                delay *= 2;
-                                                        } catch (Exception e) {
-                                                                // For other exceptions, do not retry and log the error
-                                                                LOGGER.error("Non-retryable exception occurred while processing event: {}",
-                                                                                event, e);
-                                                        }
-                                                }
-                                        });
-                                } catch (Exception e) {
-                                        LOGGER.error("Error processing changeStreamDocument: {}", event,
-                                                        e);
+                        executor.submit(() -> {
+                                int attempt = 0;
+                                long delay = initialDelayMS;
+                                while (attempt < maxAttempts) {
+                                        try {
+                                                processEvent(event);
+                                                break;
+                                        } catch (MongoTimeoutException | MongoSocketReadException
+                                                        | MongoSocketWriteException
+                                                        | MongoCommandException
+                                                        | MongoWriteConcernException e) {
+                                                // Retry on specific exceptions that require manual
+                                                // handling
+                                                attempt++;
+                                                LOGGER.warn("Attempt {} failed for event {}. Retrying in {} ms...",
+                                                                attempt, event, delay, e);
+                                                retrySleep(delay);
+                                                delay *= 2;
+                                        } catch (Exception e) {
+                                                // For other exceptions, do not retry and log the error
+                                                LOGGER.error("Non-retryable exception occurred while processing event: {}",
+                                                                event, e);
+                                        }
                                 }
                         });
-                } catch (Exception e) {
-                        LOGGER.error("Error starting change stream listener ", e);
-                }
+                });
         }
 }

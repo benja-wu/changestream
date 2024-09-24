@@ -1,4 +1,3 @@
-// EventProcessingMediatorTest.java
 package com.example.demo;
 
 import static org.mockito.ArgumentMatchers.*;
@@ -52,12 +51,32 @@ class EventProcessingMediatorTest {
                 mediator.init();
 
                 // Mock all necessary metrics configurations to avoid NullPointerException
+                mockMetrics();
+        }
+
+        private void mockMetrics() {
+                // Mocking metrics methods to avoid NullPointerExceptions
                 when(metricsConfig.eventLagPerThread()).thenReturn(mock(io.prometheus.client.Gauge.class));
                 when(metricsConfig.eventLagPerThread().labels(any(String.class)))
                                 .thenReturn(mock(io.prometheus.client.Gauge.Child.class));
+
                 when(metricsConfig.tpsPerThread()).thenReturn(mock(io.prometheus.client.Gauge.class));
                 when(metricsConfig.tpsPerThread().labels(any(String.class)))
                                 .thenReturn(mock(io.prometheus.client.Gauge.Child.class));
+
+                // Correctly mock the histogram and timer for eventProcessDuration
+                io.prometheus.client.Histogram histogramMock = mock(io.prometheus.client.Histogram.class);
+                io.prometheus.client.Histogram.Timer timerMock = mock(io.prometheus.client.Histogram.Timer.class);
+                when(metricsConfig.eventProcessDuration()).thenReturn(histogramMock);
+                when(histogramMock.startTimer()).thenReturn(timerMock);
+
+                // Use doAnswer to simulate void method observeDuration
+                doAnswer(invocation -> null).when(timerMock).observeDuration();
+
+                // Correctly mock the summary for p99ProcessingTime
+                io.prometheus.client.Summary summaryMock = mock(io.prometheus.client.Summary.class);
+                when(metricsConfig.p99ProcessingTime()).thenReturn(summaryMock);
+                doAnswer(invocation -> null).when(summaryMock).observe(anyDouble());
         }
 
         @Test
@@ -98,12 +117,7 @@ class EventProcessingMediatorTest {
                                 .thenReturn(0); // Next call succeeds
 
                 // Mock Prometheus metrics to avoid null issues
-                when(metricsConfig.eventLagPerThread()).thenReturn(mock(io.prometheus.client.Gauge.class));
-                when(metricsConfig.eventLagPerThread().labels(any(String.class)))
-                                .thenReturn(mock(io.prometheus.client.Gauge.Child.class));
-                when(metricsConfig.tpsPerThread()).thenReturn(mock(io.prometheus.client.Gauge.class));
-                when(metricsConfig.tpsPerThread().labels(any(String.class)))
-                                .thenReturn(mock(io.prometheus.client.Gauge.Child.class));
+                mockMetrics();
 
                 try {
                         mediator.processEvent(changeStreamDocument);
