@@ -33,7 +33,7 @@ public class PrometheusMetricsConfig {
         public Histogram eventProcessDuration() {
                 return Histogram.build().name("event_process_duration_seconds")
                                 .help("Histogram for tracking event processing duration.")
-                                .buckets(0.0, 0.05, 0.1, 0.2, 0.3, 0.5, 1, 2).register();
+                                .buckets(0.0, 0.05, 0.1, 0.2, 0.5, 0.7, 1, 2).register();
         }
 
         @Bean

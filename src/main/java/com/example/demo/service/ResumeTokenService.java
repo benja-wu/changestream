@@ -22,27 +22,18 @@ public class ResumeTokenService {
                 this.resumeTokenCollection = resumeTokenCollection;
         }
 
-        public void saveResumeToken(BsonDocument resumeToken, int threadId) {
-                System.out.println("in save resume token");
-                try {
-                        Document mongoDocument = new Document().append("threadID", threadId)
-                                        .append("resumeToken", resumeToken).append("date", new Date())
-                                        .append("appName", "demoChangeStream");
+        public void saveResumeToken(BsonDocument resumeToken, String threadName) {
+                Document mongoDocument = new Document().append("threadName", threadName)
+                                .append("resumeToken", resumeToken).append("date", new Date())
+                                .append("appName", "demoChangeStream");
 
-                        // Use upsert to ensure each thread only updates its own record
-                        resumeTokenCollection.updateOne(Filters.eq("threadID", threadId),
-                                        new Document("$set", mongoDocument), new UpdateOptions().upsert(true));
+                // Use upsert to ensure each thread only updates its own record
+                resumeTokenCollection.updateOne(Filters.eq("threadID", threadName),
+                                new Document("$set", mongoDocument), new UpdateOptions().upsert(true));
 
-                        LOGGER.info("Saved resume token for thread {}: {}", threadId, resumeToken);
-                } catch (Exception e) {
-                        LOGGER.error("Error saving resume token for thread {}: {}", threadId, e);
-                }
         }
 
         public BsonDocument getLatestResumeToken() {
-                // Log entering the method
-                System.out.println("In getLatestResumeToken");
-
                 // Find the document with the latest date and retrieve its resume token
                 // Get the latest token
                 Document latestTokenDoc = resumeTokenCollection.find().sort(new Document("date", -1)).first();

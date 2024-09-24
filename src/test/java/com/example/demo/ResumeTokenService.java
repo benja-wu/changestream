@@ -1,13 +1,18 @@
+// ResumeTokenServiceTest.java
 package com.example.demo;
+
+import java.util.Date;
 
 import org.bson.BsonDocument;
 import org.bson.Document;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import org.mockito.MockitoAnnotations;
@@ -21,42 +26,53 @@ import com.mongodb.client.model.UpdateOptions;
 class ResumeTokenServiceTest {
 
         @Mock
-        private MongoCollection<Document> mockCollection;
+        private MongoCollection<Document> resumeTokenCollection;
 
-        @Mock
-        private FindIterable<Document> mockFindIterable;
-
+        @InjectMocks
         private ResumeTokenService resumeTokenService;
 
         @BeforeEach
         void setUp() {
                 MockitoAnnotations.openMocks(this);
-                resumeTokenService = new ResumeTokenService(mockCollection);
         }
 
         @Test
         void testSaveResumeToken() {
-                BsonDocument resumeToken = new BsonDocument();
-                int threadId = 1;
+                // Create a mock resume token and expected document
+                BsonDocument resumeToken = BsonDocument.parse("{'_data': 'test'}");
+                Document expectedDocument = new Document()
+                                .append("threadName", "testThread")
+                                .append("resumeToken", resumeToken)
+                                .append("date", new Date())
+                                .append("appName", "demoChangeStream");
 
-                resumeTokenService.saveResumeToken(resumeToken, threadId);
+                // Call the method under test
+                resumeTokenService.saveResumeToken(resumeToken, "testThread");
 
-                // Verify the updateOne method is called correctly
-                verify(mockCollection).updateOne(eq(Filters.eq("threadID", threadId)), any(Document.class),
+                // Verify that the updateOne method is called with the correct arguments
+                verify(resumeTokenCollection, times(1)).updateOne(
+                                eq(Filters.eq("threadID", "testThread")),
+                                eq(new Document("$set", expectedDocument)),
                                 any(UpdateOptions.class));
         }
 
         @Test
         void testGetLatestResumeToken() {
-                // Mock behavior for find() and sort() methods
-                when(mockCollection.find()).thenReturn(mockFindIterable);
-                when(mockFindIterable.sort(any(Document.class))).thenReturn(mockFindIterable);
-                when(mockFindIterable.first()).thenReturn(null); // Simulate no document found scenario
+                // Mock the FindIterable and expected document
+                FindIterable<Document> findIterable = mock(FindIterable.class);
+                Document latestTokenDoc = new Document("resumeToken", new Document("_data", "testData"))
+                                .append("date", new Date());
 
-                // Test retrieval
-                BsonDocument resumeToken = resumeTokenService.getLatestResumeToken();
+                // Configure stubbing with thenReturn correctly
+                when(resumeTokenCollection.find()).thenReturn(findIterable);
+                when(findIterable.sort(any(Document.class))).thenReturn(findIterable);
+                when(findIterable.first()).thenReturn(latestTokenDoc);
 
-                // Assert the retrieved resume token is null
-                assertNull(resumeToken);
+                // Call the method under test
+                resumeTokenService.getLatestResumeToken();
+
+                // Verify that the find method is called
+                verify(resumeTokenCollection, times(1)).find();
+                verify(findIterable, times(1)).sort(any(Document.class));
         }
 }
