@@ -13,6 +13,11 @@ import com.mongodb.client.MongoCollection;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.UpdateOptions;
 
+/**
+ * ResumeTokenService helps to store and fetch the resunme token for the target
+ * changestream.@interface
+ * Uses MongoDB one collection as presistent resume token store.
+ */
 @Service
 public class ResumeTokenService {
         private final Logger LOGGER = LoggerFactory.getLogger(ResumeTokenService.class);

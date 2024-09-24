@@ -11,6 +11,9 @@ import com.mongodb.client.ChangeStreamIterable;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.model.changestream.ChangeStreamDocument;
 
+/**
+ * Customized business logic for handling one change stream event
+ */
 @Service
 public class ChangeEventService {
 

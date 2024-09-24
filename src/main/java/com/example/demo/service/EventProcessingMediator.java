@@ -3,6 +3,7 @@ package com.example.demo.service;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 
 import org.bson.BsonDocument;
@@ -68,7 +69,15 @@ public class EventProcessingMediator {
                 metricsConfig.eventProcessDuration();
                 metricsConfig.tpsPerThread();
                 metricsConfig.p99ProcessingTime();
-                executor = Executors.newFixedThreadPool(nums);
+                // Use a custom thread factory to create daemon threads
+                ThreadFactory daemonThreadFactory = runnable -> {
+                        Thread thread = new Thread(runnable);
+                        thread.setDaemon(true); // Set the thread as daemon
+                        return thread;
+                };
+
+                // Initialize the executor with the daemon thread factory
+                executor = Executors.newFixedThreadPool(nums, daemonThreadFactory);
         }
 
         public ChangeStreamIterable<Document> changeStreamIterator(BsonDocument resumeToken) {
@@ -126,6 +135,24 @@ public class EventProcessingMediator {
                 } catch (InterruptedException ie) {
                         Thread.currentThread().interrupt();
                         LOGGER.error("Retry sleep interrupted", ie);
+                }
+        }
+
+        public void shutdown() {
+                LOGGER.info("Shutdown requested, closing change stream...");
+                if (executor != null) {
+                        executor.shutdown();
+                        try {
+                                if (!executor.awaitTermination(30, TimeUnit.SECONDS)) {
+                                        executor.shutdownNow();
+                                        if (!executor.awaitTermination(30, TimeUnit.SECONDS)) {
+                                                LOGGER.error("Executor service did not terminate gracefully.");
+                                        }
+                                }
+                        } catch (InterruptedException ie) {
+                                executor.shutdownNow();
+                                Thread.currentThread().interrupt();
+                        }
                 }
         }
 

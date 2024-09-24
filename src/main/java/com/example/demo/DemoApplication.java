@@ -12,6 +12,7 @@ import com.example.demo.service.EventProcessingMediator;
 
 import io.prometheus.client.exporter.HTTPServer;
 import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
 
 @SpringBootApplication
 @Configurable
@@ -47,15 +48,23 @@ public class DemoApplication {
     }
 
     public void startChangeStreamListener() {
-        mediator.changeStreamProcessWithRetry();
+        Thread changeStreamThread = new Thread(() -> {
+            // Run the blocking change stream processing logic
+            mediator.changeStreamProcessWithRetry();
+        });
+        changeStreamThread.setDaemon(true); // Set the thread as a daemon thread
+        changeStreamThread.start(); // Start the thread
+        LOGGER.info("Change stream listener started in a daemon thread");
     }
 
+    @PreDestroy
     public void closeConnection() {
         try {
             if (httpServer != null) {
                 httpServer.stop(); // Stop the HTTP server if it's running
                 LOGGER.info("Prometheus metrics server stopped");
             }
+            mediator.shutdown();
         } catch (Exception e) {
             LOGGER.error("Error closing MongoDB connection: {}", e);
         }
