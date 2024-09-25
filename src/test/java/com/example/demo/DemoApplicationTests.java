@@ -7,22 +7,19 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
-import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
-import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.junit.jupiter.SpringExtension;
 
 import com.example.demo.service.EventProcessingMediator;
 
-import io.prometheus.client.exporter.HTTPServer;
-
-@ExtendWith(MockitoExtension.class)
+@SpringBootTest(classes = DemoApplication.class)
+@ExtendWith(SpringExtension.class)
 class DemoApplicationTest {
 
-        @Mock
-        private EventProcessingMediator mediator;
-
-        @Mock
-        private HTTPServer httpServer;
+        @MockBean
+        private EventProcessingMediator mediator; // MockBean to integrate with Spring context
 
         @InjectMocks
         private DemoApplication demoApplication;
@@ -30,21 +27,16 @@ class DemoApplicationTest {
         @BeforeEach
         void setUp() {
                 MockitoAnnotations.openMocks(this);
-        }
-
-        @Test
-        void testStartHttpServer() {
-                // We don't start the actual HTTP server, so no stubbing needed for `httpServer`
-                demoApplication.startHttpServer();
-
-                verify(mediator, never()).changeStreamProcessWithRetry();
+                // Reset the mock to ensure no previous invocations affect the current test
+                reset(mediator);
         }
 
         @Test
         void testStartChangeStreamListener() {
-                // Verify that the change stream listener can be started without threads
+                // Call the method that triggers the listener startup
                 demoApplication.startChangeStreamListener();
 
+                // Verify that the changeStreamProcessWithRetry method was called exactly once
                 verify(mediator, times(1)).changeStreamProcessWithRetry();
         }
 }

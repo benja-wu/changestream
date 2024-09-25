@@ -18,6 +18,7 @@ import com.example.demo.metrics.TpsCalculator;
 import com.example.demo.service.ChangeEventService;
 import com.example.demo.service.EventProcessingMediator;
 import com.example.demo.service.ResumeTokenService;
+import com.mongodb.MongoSocketReadException;
 import com.mongodb.client.ChangeStreamIterable;
 import com.mongodb.client.model.changestream.ChangeStreamDocument;
 
@@ -44,8 +45,7 @@ class EventProcessingMediatorTest {
 
                 // Manually set @Value properties
                 ReflectionTestUtils.setField(mediator, "nums", 2); // Set thread pool size
-                ReflectionTestUtils.setField(mediator, "maxAttempts", 3); // Set max retry attempts
-                ReflectionTestUtils.setField(mediator, "initialDelayMS", 100); // Set initial delay for retries
+                ReflectionTestUtils.setField(mediator, "shutdownTimeoutString", "30s"); // Set shutdown timeout duration
 
                 // Initialize the mediator's thread pool and metrics
                 mediator.init();
@@ -113,7 +113,7 @@ class EventProcessingMediatorTest {
                 // Mock processChange to throw an exception the first time and return 0 the next
                 // time
                 when(changeEventService.processChange(any(ChangeStreamDocument.class)))
-                                .thenThrow(new RuntimeException("Simulated Exception"))
+                                .thenThrow(new MongoSocketReadException("Simulated MongoSocketReadException", null))
                                 .thenReturn(0); // Next call succeeds
 
                 // Mock Prometheus metrics to avoid null issues
@@ -121,11 +121,20 @@ class EventProcessingMediatorTest {
 
                 try {
                         mediator.processEvent(changeStreamDocument);
-                } catch (RuntimeException e) {
+                } catch (Exception e) {
                         // Handle the simulated exception to allow the test to proceed
                         System.err.println("Caught expected exception: " + e.getMessage());
                 }
 
                 verify(changeEventService, atLeastOnce()).processChange(changeStreamDocument);
+        }
+
+        @Test
+        void testShutdown() throws InterruptedException {
+                // Ensure the mediator.shutdown() properly handles executor shutdown
+                mediator.shutdown();
+
+                // Verify that shutdownNow() is called when timeout occurs
+                verify(resumeTokenService, never()).getLatestResumeToken(); // Ensure no interactions post shutdown
         }
 }

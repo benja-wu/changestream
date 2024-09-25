@@ -1,6 +1,7 @@
 // EventProcessingMediator.java
 package com.example.demo.service;
 
+import java.time.Duration;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
@@ -13,6 +14,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Configurable;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.retry.annotation.Backoff;
+import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Service;
 
 import com.example.demo.metrics.PrometheusMetricsConfig;
@@ -44,13 +47,12 @@ public class EventProcessingMediator {
         public ExecutorService executor;
 
         @Value("${spring.threadpool.nums}")
-        private Integer nums;
+        private int nums;
 
-        @Value("${spring.mongodb.retry.maxattempts}")
-        private Integer maxAttempts;
+        @Value("${spring.lifecycle.timeout-per-shutdown-phase:30s}") // Configurable shutdown timeout duration
+        private String shutdownTimeoutString;
 
-        @Value("${spring.mongodb.retry.initialdelayms}")
-        private Integer initialDelayMS;
+        private long shutdownTimeout; // Timeout value in seconds
 
         @Autowired
         public EventProcessingMediator(ChangeEventService changeEventService, ResumeTokenService resumeTokenService,
@@ -76,6 +78,9 @@ public class EventProcessingMediator {
                         return thread;
                 };
 
+                // Parse the shutdown timeout string to seconds
+                this.shutdownTimeout = Duration.parse("PT" + shutdownTimeoutString.replaceAll("[^0-9]", "") + "S")
+                                .getSeconds();
                 // Initialize the executor with the daemon thread factory
                 executor = Executors.newFixedThreadPool(nums, daemonThreadFactory);
         }
@@ -84,23 +89,33 @@ public class EventProcessingMediator {
                 return changeEventService.changeStreamIterator(resumeToken);
         }
 
+        /**
+         * Use Spring @Retryable to auto retry network relate exceptions in MongoDB
+         * The NoPrimaryException in MongoDB Driver client is handled by native dirver
+         * already.
+         * 
+         * @param event
+         */
+        @Retryable(value = { MongoTimeoutException.class, MongoSocketReadException.class,
+                        MongoSocketWriteException.class, MongoCommandException.class,
+                        MongoWriteConcernException.class }, maxAttemptsExpression = "${spring.mongodb.retry.maxattempts}", backoff = @Backoff(delayExpression = "${spring.mongodb.retry.initialdelayms}"))
         public void processEvent(ChangeStreamDocument<Document> event) {
                 String currentThreadName = Thread.currentThread().getName();
-                long startTime = System.currentTimeMillis();
+                long startTimeMillis = System.currentTimeMillis();
                 LOGGER.info("Thread " + currentThreadName + "  is correctly processing change: {}" + event);
 
                 long eventMillis;
                 Document fullDocument = event.getFullDocument();
                 if (fullDocument != null && fullDocument.containsKey("date")) {
                         eventMillis = ((java.util.Date) fullDocument.get("date")).getTime();
-                        LOGGER.info("Date field in milliseconds: {}", eventMillis);
                 } else {
                         eventMillis = event.getClusterTime().getTime() * 1000;
                 }
 
                 // Record the event for TPS calculation
                 tpsCalculator.recordEvent(currentThreadName);
-                double eventLag = (System.currentTimeMillis() - eventMillis);
+                double eventLag = (startTimeMillis - eventMillis);
+                LOGGER.info("Date field in milliseconds: {}, currentTimMillis: {}", eventMillis, startTimeMillis);
                 // Record event lag for the current thread
                 metricsConfig.eventLagPerThread().labels(currentThreadName).set(eventLag);
 
@@ -117,7 +132,7 @@ public class EventProcessingMediator {
                 metricsConfig.tpsPerThread().labels(currentThreadName).set(tps);
                 // Record the processing duration
                 // Calculate and observe the processing duration
-                long durationMillis = System.currentTimeMillis() - startTime; // Duration in milliseconds
+                long durationMillis = System.currentTimeMillis() - startTimeMillis; // Duration in milliseconds
                 double durationSeconds = durationMillis / 1000.0; // Convert duration to seconds
 
                 metricsConfig.eventProcessDuration().observe(durationSeconds);
@@ -129,23 +144,14 @@ public class EventProcessingMediator {
                 return resumeTokenService.getLatestResumeToken();
         }
 
-        private void retrySleep(long delay) {
-                try {
-                        TimeUnit.MILLISECONDS.sleep(delay);
-                } catch (InterruptedException ie) {
-                        Thread.currentThread().interrupt();
-                        LOGGER.error("Retry sleep interrupted", ie);
-                }
-        }
-
         public void shutdown() {
                 LOGGER.info("Shutdown requested, closing change stream...");
                 if (executor != null) {
                         executor.shutdown();
                         try {
-                                if (!executor.awaitTermination(30, TimeUnit.SECONDS)) {
+                                if (!executor.awaitTermination(shutdownTimeout, TimeUnit.SECONDS)) {
                                         executor.shutdownNow();
-                                        if (!executor.awaitTermination(30, TimeUnit.SECONDS)) {
+                                        if (!executor.awaitTermination(shutdownTimeout, TimeUnit.SECONDS)) {
                                                 LOGGER.error("Executor service did not terminate gracefully.");
                                         }
                                 }
@@ -168,31 +174,13 @@ public class EventProcessingMediator {
                         // Get event's unique _id
                         LOGGER.info("get one event and start handle {}, first try", event);
 
-                        executor.submit(() -> {
-                                int attempt = 0;
-                                long delay = initialDelayMS;
-                                while (attempt < maxAttempts) {
-                                        try {
-                                                processEvent(event);
-                                                break;
-                                        } catch (MongoTimeoutException | MongoSocketReadException
-                                                        | MongoSocketWriteException
-                                                        | MongoCommandException
-                                                        | MongoWriteConcernException e) {
-                                                // Retry on specific exceptions that require manual
-                                                // handling
-                                                attempt++;
-                                                LOGGER.warn("Attempt {} failed for event {}. Retrying in {} ms...",
-                                                                attempt, event, delay, e);
-                                                retrySleep(delay);
-                                                delay *= 2;
-                                        } catch (Exception e) {
-                                                // For other exceptions, do not retry and log the error
-                                                LOGGER.error("Non-retryable exception occurred while processing event: {}",
-                                                                event, e);
-                                        }
-                                }
-                        });
+                        try {
+                                executor.submit(() -> {
+                                        processEvent(event);
+                                });
+                        } catch (Exception e) {
+                                LOGGER.error("Non-retryable exception occurred while processing event: {}", event, e);
+                        }
                 });
         }
 }
