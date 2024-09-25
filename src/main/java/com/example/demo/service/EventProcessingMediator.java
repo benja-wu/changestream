@@ -2,10 +2,12 @@
 package com.example.demo.service;
 
 import java.time.Duration;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.bson.BsonDocument;
 import org.bson.Document;
@@ -44,7 +46,8 @@ public class EventProcessingMediator {
         private final ResumeTokenService resumeTokenService;
         private final TpsCalculator tpsCalculator; // TPS calculator instance
         private final PrometheusMetricsConfig metricsConfig; //
-        public ExecutorService executor;
+        private ExecutorService[] executors;
+        private final AtomicInteger threadCounter = new AtomicInteger();
 
         @Value("${spring.threadpool.nums}")
         private int nums;
@@ -71,18 +74,22 @@ public class EventProcessingMediator {
                 metricsConfig.eventProcessDuration();
                 metricsConfig.tpsPerThread();
                 metricsConfig.p99ProcessingTime();
-                // Use a custom thread factory to create daemon threads
-                ThreadFactory daemonThreadFactory = runnable -> {
-                        Thread thread = new Thread(runnable);
-                        thread.setDaemon(true); // Set the thread as daemon
-                        return thread;
-                };
 
                 // Parse the shutdown timeout string to seconds
                 this.shutdownTimeout = Duration.parse("PT" + shutdownTimeoutString.replaceAll("[^0-9]", "") + "S")
                                 .getSeconds();
                 // Initialize the executor with the daemon thread factory
-                executor = Executors.newFixedThreadPool(nums, daemonThreadFactory);
+                // Initialize a pool of executor services with daemon threads
+                executors = new ExecutorService[nums];
+                ThreadFactory daemonThreadFactory = runnable -> {
+                        Thread thread = new Thread(runnable);
+                        thread.setDaemon(true);
+                        thread.setName("Thread-" + threadCounter.getAndIncrement());
+                        return thread;
+                };
+                for (int i = 0; i < nums; i++) {
+                        executors[i] = Executors.newSingleThreadExecutor(daemonThreadFactory);
+                }
         }
 
         public ChangeStreamIterable<Document> changeStreamIterator(BsonDocument resumeToken) {
@@ -146,18 +153,20 @@ public class EventProcessingMediator {
 
         public void shutdown() {
                 LOGGER.info("Shutdown requested, closing change stream...");
-                if (executor != null) {
-                        executor.shutdown();
-                        try {
-                                if (!executor.awaitTermination(shutdownTimeout, TimeUnit.SECONDS)) {
-                                        executor.shutdownNow();
+                for (ExecutorService executor : executors) {
+                        if (executor != null) {
+                                executor.shutdown();
+                                try {
                                         if (!executor.awaitTermination(shutdownTimeout, TimeUnit.SECONDS)) {
-                                                LOGGER.error("Executor service did not terminate gracefully.");
+                                                executor.shutdownNow();
+                                                if (!executor.awaitTermination(shutdownTimeout, TimeUnit.SECONDS)) {
+                                                        LOGGER.error("Executor service did not terminate gracefully.");
+                                                }
                                         }
+                                } catch (InterruptedException ie) {
+                                        executor.shutdownNow();
+                                        Thread.currentThread().interrupt();
                                 }
-                        } catch (InterruptedException ie) {
-                                executor.shutdownNow();
-                                Thread.currentThread().interrupt();
                         }
                 }
         }
@@ -169,15 +178,18 @@ public class EventProcessingMediator {
                 BsonDocument resumeToken = getLatestResumeToken();
                 ChangeStreamIterable<Document> changeStream = changeStreamIterator(resumeToken);
 
-                // Start the change stream with or without a resume token
+                // special logic, make sure the same userID event will be handled in the same
+                // thread for ever.
                 changeStream.forEach(event -> {
-                        // Get event's unique _id
-                        LOGGER.info("get one event and start handle {}, first try", event);
-
+                        LOGGER.info("Received event, starting handling {}", event);
                         try {
-                                executor.submit(() -> {
-                                        processEvent(event);
-                                });
+                                Document fullDocument = event.getFullDocument();
+                                int userID = fullDocument.getInteger("userID");
+                                // Determine which executor to use based on userID
+                                int executorIndex = userID % nums;
+
+                                // Submit the task to the corresponding executor
+                                CompletableFuture.runAsync(() -> processEvent(event), executors[executorIndex]);
                         } catch (Exception e) {
                                 LOGGER.error("Non-retryable exception occurred while processing event: {}", event, e);
                         }

@@ -28,6 +28,9 @@ public class MongoConfig {
         @Value("${spring.mongodb.collection}")
         private String collName;
 
+        @Value("${spring.mongodb.txn.collection}")
+        private String txncollName;
+
         @Value("${spring.mongodb.database}")
         private String dbName;
 
@@ -55,5 +58,10 @@ public class MongoConfig {
         @Bean
         public MongoCollection<Document> changestreamCollection(MongoClient mongoClient) {
                 return mongoClient.getDatabase(dbName).getCollection(collName, Document.class);
+        }
+
+        @Bean
+        public MongoCollection<Document> userDailyTxnCollection(MongoClient mongoClient) {
+                return mongoClient.getDatabase(dbName).getCollection(txncollName, Document.class);
         }
 }

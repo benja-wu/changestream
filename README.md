@@ -7,6 +7,19 @@ Java MongoDB changestream repo based on SpringBoot framework
 3. It supports multple threads execution with configurable thread numbers. 
 4. It watches one collection's change event only. If we need to watch multiple collections in MongoDB, start different instances with different configurations. 
 
+### Event sequence design
+1. Due to the multiple thread processing, one user's event may be consumed with different thread, that may cause the order violation for the some user's event.
+2. This framework will distributed event into the same thread by the hash method
+```java
+        Document fullDocument = event.getFullDocument();
+        int userID = fullDocument.getInteger("userID");
+        // Determine which executor to use based on userID
+        int executorIndex = userID % nums;
+
+        // Submit the task to the corresponding executor
+        CompletableFuture.runAsync(() -> processEvent(event), executors[executorIndex]);
+```
+
 ## Observability
 1. Use Premethues libiary, expose related metris for observability 
 2. Metrics includs

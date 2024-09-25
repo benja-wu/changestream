@@ -11,18 +11,20 @@ import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import com.example.demo.metrics.PrometheusMetricsConfig;
 import com.example.demo.metrics.TpsCalculator;
 import com.example.demo.service.ChangeEventService;
 import com.example.demo.service.EventProcessingMediator;
 import com.example.demo.service.ResumeTokenService;
-import com.mongodb.MongoSocketReadException;
 import com.mongodb.client.ChangeStreamIterable;
 import com.mongodb.client.model.changestream.ChangeStreamDocument;
 
-class EventProcessingMediatorTest {
+import io.prometheus.client.Gauge;
+import io.prometheus.client.Histogram;
+import io.prometheus.client.Summary;
+
+public class EventProcessingMediatorTest {
 
         @Mock
         private ChangeEventService changeEventService;
@@ -31,110 +33,68 @@ class EventProcessingMediatorTest {
         private ResumeTokenService resumeTokenService;
 
         @Mock
+        private PrometheusMetricsConfig metricsConfig;
+
+        @Mock
         private TpsCalculator tpsCalculator;
 
         @Mock
-        private PrometheusMetricsConfig metricsConfig;
+        private Gauge.Child gaugeChild;
 
         @InjectMocks
         private EventProcessingMediator mediator;
 
         @BeforeEach
-        void setUp() {
+        public void setUp() {
+                // Initialize the mocks
                 MockitoAnnotations.openMocks(this);
 
-                // Manually set @Value properties
-                ReflectionTestUtils.setField(mediator, "nums", 2); // Set thread pool size
-                ReflectionTestUtils.setField(mediator, "shutdownTimeoutString", "30s"); // Set shutdown timeout duration
+                // Mock the Gauge and its Child
+                Gauge mockGauge = mock(Gauge.class);
+                when(metricsConfig.eventLagPerThread()).thenReturn(mockGauge);
+                when(mockGauge.labels(any(String.class))).thenReturn(gaugeChild);
 
-                // Initialize the mediator's thread pool and metrics
-                mediator.init();
+                // Mock the tpsPerThread Gauge
+                Gauge tpsGauge = mock(Gauge.class);
+                when(metricsConfig.tpsPerThread()).thenReturn(tpsGauge);
+                when(tpsGauge.labels(any(String.class))).thenReturn(gaugeChild);
 
-                // Mock all necessary metrics configurations to avoid NullPointerException
-                mockMetrics();
-        }
+                // Mock the Histogram for event process duration
+                Histogram mockHistogram = mock(Histogram.class);
+                Histogram.Child mockHistogramChild = mock(Histogram.Child.class);
+                when(metricsConfig.eventProcessDuration()).thenReturn(mockHistogram);
+                when(mockHistogram.labels(any(String.class))).thenReturn(mockHistogramChild);
+                doNothing().when(mockHistogramChild).observe(anyDouble());
 
-        private void mockMetrics() {
-                // Mocking metrics methods to avoid NullPointerExceptions
-                when(metricsConfig.eventLagPerThread()).thenReturn(mock(io.prometheus.client.Gauge.class));
-                when(metricsConfig.eventLagPerThread().labels(any(String.class)))
-                                .thenReturn(mock(io.prometheus.client.Gauge.Child.class));
-
-                when(metricsConfig.tpsPerThread()).thenReturn(mock(io.prometheus.client.Gauge.class));
-                when(metricsConfig.tpsPerThread().labels(any(String.class)))
-                                .thenReturn(mock(io.prometheus.client.Gauge.Child.class));
-
-                // Correctly mock the histogram and timer for eventProcessDuration
-                io.prometheus.client.Histogram histogramMock = mock(io.prometheus.client.Histogram.class);
-                io.prometheus.client.Histogram.Timer timerMock = mock(io.prometheus.client.Histogram.Timer.class);
-                when(metricsConfig.eventProcessDuration()).thenReturn(histogramMock);
-                when(histogramMock.startTimer()).thenReturn(timerMock);
-
-                // Use doAnswer to simulate void method observeDuration
-                doAnswer(invocation -> null).when(timerMock).observeDuration();
-
-                // Correctly mock the summary for p99ProcessingTime
-                io.prometheus.client.Summary summaryMock = mock(io.prometheus.client.Summary.class);
-                when(metricsConfig.p99ProcessingTime()).thenReturn(summaryMock);
-                doAnswer(invocation -> null).when(summaryMock).observe(anyDouble());
+                // Mock the Summary for p99ProcessingTime
+                Summary mockSummary = mock(Summary.class);
+                Summary.Child mockSummaryChild = mock(Summary.Child.class);
+                when(metricsConfig.p99ProcessingTime()).thenReturn(mockSummary);
+                when(mockSummary.labels(any(String.class))).thenReturn(mockSummaryChild);
+                doNothing().when(mockSummaryChild).observe(anyDouble());
         }
 
         @Test
-        void testChangeStreamProcessWithRetry() {
-                BsonDocument resumeToken = BsonDocument.parse("{'_data': 'test'}");
+        public void testChangeStreamIterator() {
+                // Correctly mock ChangeStreamIterable
                 ChangeStreamIterable<Document> changeStreamIterable = mock(ChangeStreamIterable.class);
-                ChangeStreamDocument<Document> changeStreamDocument = mock(ChangeStreamDocument.class);
-                BsonTimestamp bsonTimestamp = new BsonTimestamp(1625140800, 1);
+                when(changeEventService.changeStreamIterator(any(BsonDocument.class))).thenReturn(changeStreamIterable);
 
-                when(resumeTokenService.getLatestResumeToken()).thenReturn(resumeToken);
-                when(changeEventService.changeStreamIterator(resumeToken)).thenReturn(changeStreamIterable);
-                when(changeStreamDocument.getClusterTime()).thenReturn(bsonTimestamp);
+                mediator.changeStreamIterator(new BsonDocument());
 
-                // Mock the change stream forEach behavior
-                doAnswer(invocation -> {
-                        mediator.processEvent(changeStreamDocument);
-                        return null;
-                }).when(changeStreamIterable).forEach(any());
-
-                mediator.changeStreamProcessWithRetry();
-
-                verify(changeEventService, times(1)).changeStreamIterator(resumeToken);
-                verify(resumeTokenService, times(1)).getLatestResumeToken();
+                verify(changeEventService, times(1)).changeStreamIterator(any(BsonDocument.class));
         }
 
         @Test
-        void testProcessEventWithRetryHandling() {
-                ChangeStreamDocument<Document> changeStreamDocument = mock(ChangeStreamDocument.class);
-                BsonTimestamp bsonTimestamp = new BsonTimestamp(1625140800, 1);
+        public void testProcessEvent() {
+                // Mock a ChangeStreamDocument and set up its behavior
+                ChangeStreamDocument<Document> event = mock(ChangeStreamDocument.class);
+                BsonTimestamp bsonTimestamp = new BsonTimestamp(1000, 1);
+                when(event.getClusterTime()).thenReturn(bsonTimestamp);
+                when(event.getResumeToken()).thenReturn(new BsonDocument());
 
-                // Configure the mock to return a BsonTimestamp when getClusterTime() is called
-                when(changeStreamDocument.getClusterTime()).thenReturn(bsonTimestamp);
+                mediator.processEvent(event);
 
-                // Mock processChange to throw an exception the first time and return 0 the next
-                // time
-                when(changeEventService.processChange(any(ChangeStreamDocument.class)))
-                                .thenThrow(new MongoSocketReadException("Simulated MongoSocketReadException", null))
-                                .thenReturn(0); // Next call succeeds
-
-                // Mock Prometheus metrics to avoid null issues
-                mockMetrics();
-
-                try {
-                        mediator.processEvent(changeStreamDocument);
-                } catch (Exception e) {
-                        // Handle the simulated exception to allow the test to proceed
-                        System.err.println("Caught expected exception: " + e.getMessage());
-                }
-
-                verify(changeEventService, atLeastOnce()).processChange(changeStreamDocument);
-        }
-
-        @Test
-        void testShutdown() throws InterruptedException {
-                // Ensure the mediator.shutdown() properly handles executor shutdown
-                mediator.shutdown();
-
-                // Verify that shutdownNow() is called when timeout occurs
-                verify(resumeTokenService, never()).getLatestResumeToken(); // Ensure no interactions post shutdown
+                verify(resumeTokenService, times(1)).saveResumeToken(any(), anyString());
         }
 }

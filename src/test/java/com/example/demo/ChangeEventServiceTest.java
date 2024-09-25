@@ -1,18 +1,15 @@
 // ChangeEventServiceTest.java
 package com.example.demo;
 
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
+
 import org.bson.BsonDocument;
 import org.bson.Document;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import static org.mockito.ArgumentMatchers.any;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 import org.mockito.MockitoAnnotations;
 
 import com.example.demo.service.ChangeEventService;
