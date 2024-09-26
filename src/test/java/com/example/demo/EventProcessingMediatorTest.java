@@ -1,7 +1,12 @@
 package com.example.demo;
 
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
+
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import org.bson.BsonDocument;
 import org.bson.BsonTimestamp;
@@ -96,5 +101,38 @@ public class EventProcessingMediatorTest {
                 mediator.processEvent(event);
 
                 verify(resumeTokenService, times(1)).saveResumeToken(any(), anyString());
+        }
+
+        @Test
+        public void testProcessEventThrowsException() {
+                // Arrange
+                ChangeStreamDocument<Document> event = mock(ChangeStreamDocument.class);
+                BsonTimestamp bsonTimestamp = new BsonTimestamp(1000, 1);
+                when(event.getClusterTime()).thenReturn(bsonTimestamp);
+                when(event.getResumeToken()).thenReturn(new BsonDocument());
+
+                // Mock changeEventService to throw an exception when processChange is called
+                doThrow(new RuntimeException("Simulated exception")).when(changeEventService).processChange(any());
+
+                // Create a simple single-thread executor for this test
+                ExecutorService executor = Executors.newSingleThreadExecutor();
+
+                // Act
+                CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
+                        mediator.processEvent(event);
+                }, executor).exceptionally(ex -> {
+                        // Assert
+                        // This block will execute when the exception is thrown and caught
+                        System.out.println("Caught exception: " + ex.getMessage());
+                        // Verifying that the exception is indeed handled
+                        assertTrue(ex.getMessage().contains("Simulated exception"));
+                        return null; // Return null as required by exceptionally
+                });
+
+                // Ensure the CompletableFuture is completed to properly test exception handling
+                future.join(); // Waits for the completion of the async task
+
+                // Shutdown executor after use to avoid resource leak
+                executor.shutdown();
         }
 }

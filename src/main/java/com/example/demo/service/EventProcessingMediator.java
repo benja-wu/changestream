@@ -122,7 +122,6 @@ public class EventProcessingMediator {
                 // Record the event for TPS calculation
                 tpsCalculator.recordEvent(currentThreadName);
                 double eventLag = (startTimeMillis - eventMillis);
-                LOGGER.info("Date field in milliseconds: {}, currentTimMillis: {}", eventMillis, startTimeMillis);
                 // Record event lag for the current thread
                 metricsConfig.eventLagPerThread().labels(currentThreadName).set(eventLag);
 
@@ -178,18 +177,26 @@ public class EventProcessingMediator {
                 BsonDocument resumeToken = getLatestResumeToken();
                 ChangeStreamIterable<Document> changeStream = changeStreamIterator(resumeToken);
 
-                // special logic, make sure the same userID event will be handled in the same
+                // special logic, make sure the same playerID event will be handled in the same
                 // thread for ever.
                 changeStream.forEach(event -> {
                         LOGGER.info("Received event, starting handling {}", event);
                         try {
                                 Document fullDocument = event.getFullDocument();
-                                int userID = fullDocument.getInteger("userID");
-                                // Determine which executor to use based on userID
-                                int executorIndex = userID % nums;
+                                int playerID = fullDocument.getInteger("playerID");
+                                // Determine which executor to use based on playerID
+                                int executorIndex = playerID % nums;
 
+                                LOGGER.info("evnet {}, playerID {}, executor index {}", event, playerID, executorIndex);
                                 // Submit the task to the corresponding executor
-                                CompletableFuture.runAsync(() -> processEvent(event), executors[executorIndex]);
+                                CompletableFuture.runAsync(() -> processEvent(event), executors[executorIndex])
+                                                .exceptionally(ex -> {
+                                                        // Log the exception that occurred inside processEvent
+                                                        LOGGER.error("Exception occurred while processing event: {}",
+                                                                        event, ex);
+                                                        return null; // return null since exceptionally requires a
+                                                                     // return value
+                                                });
                         } catch (Exception e) {
                                 LOGGER.error("Non-retryable exception occurred while processing event: {}", event, e);
                         }

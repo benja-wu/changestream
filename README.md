@@ -1,23 +1,61 @@
 # changestream
 Java MongoDB changestream repo based on SpringBoot framework
 
+
 ## Design
 1. It's resumeable. It will store every resume token during business logic handling automattly 
 2. It has configurable autoretry logic during the event handling, for MongoDB Java driver, **Network Exceptions**, **Transient Errors**, and **Server Selection Errors** are retied automally by itself. Others exceptions, such as  MongoTimeoutException | MongoSocketReadException | MongoSocketWriteException | MongoCommandException | MongoWriteConcernException need to handle manully. 
 3. It supports multple threads execution with configurable thread numbers. 
 4. It watches one collection's change event only. If we need to watch multiple collections in MongoDB, start different instances with different configurations. 
 
+## User case
+In the source collection, it will insert transaction doc as below:
+```json
+{"playerID":1001,"transactionID": 100003, "name":"ben","date":ISODate(), "value":23.1})
+```
+We need to update this transaction into target collection's doc 
+```json
+{
+    _id: ObjectId('66f4e4cdb1b0f322afb766a8'),
+    playerID: 1001,
+    gamingDate: ISODate('2024-09-26T00:00:00.000Z'),
+    name: 'ben',
+    txns: [
+      {
+        transactionID: 100002,
+        value: 20.1,
+        date: ISODate('2024-09-26T04:39:27.379Z')
+      },
+      {
+        transactionID: 100004,
+        value: 63.1,
+        date: ISODate('2024-09-26T04:57:23.595Z')
+      },
+      {
+        transactionID: 100003,
+        value: 23.1,
+        date: ISODate('2024-09-26T04:57:45.787Z')
+      }
+    ],
+    lastModified: ISODate('2024-09-26T04:57:45.798Z')
+  }
+
+```
+1. One play will generate one doc per day, use playerID+ gamingDate as the daily target document filter.
+2. Match the player's daily one transaction with target collections' 'txns''s elements by 'transactionID' fields, if the the transaction exists, replace the element with change steam event. If not, append it int to the 'txns' array field. 
+
+
 ### Event sequence design
 1. Due to the multiple thread processing, one user's event may be consumed with different thread, that may cause the order violation for the some user's event.
-2. This framework will distributed event into the same thread by the hash method
+2. This framework will distributed event into the same thread by using one hash method as below:
 ```java
-        Document fullDocument = event.getFullDocument();
-        int userID = fullDocument.getInteger("userID");
-        // Determine which executor to use based on userID
-        int executorIndex = userID % nums;
+     int playerID = fullDocument.getInteger("playerID");
+     // Determine which executor to use based on playerID
+     int executorIndex = playerID % nums;
 
-        // Submit the task to the corresponding executor
-        CompletableFuture.runAsync(() -> processEvent(event), executors[executorIndex]);
+     LOGGER.info("evnet {}, playerID {}, executor index {}", event, playerID, executorIndex);
+     // Submit the task to the corresponding executor
+     CompletableFuture.runAsync(() -> processEvent(event), executors[executorIndex])
 ```
 
 ## Observability

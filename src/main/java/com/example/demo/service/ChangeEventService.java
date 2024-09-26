@@ -1,7 +1,9 @@
 package com.example.demo.service;
 
+import java.util.Calendar;
 import java.util.Date;
 import java.util.List;
+import java.util.TimeZone;
 
 import org.bson.BsonDocument;
 import org.bson.Document;
@@ -24,6 +26,8 @@ public class ChangeEventService {
         private static final Logger LOGGER = LoggerFactory.getLogger(ChangeEventService.class);
         private final MongoCollection<Document> changestreamCollection;
         private final MongoCollection<Document> userDailyTxnCollection;
+        public static final int ERROR_INVALID_DOCUMENT = -1; // Error code for invalid documents
+        public static final int ERROR_BUSINESS_LOGIC = -2; // Error code for invalid documents
 
         public ChangeEventService(
                         @Qualifier("changestreamCollection") MongoCollection<Document> changestreamCollection,
@@ -40,51 +44,98 @@ public class ChangeEventService {
         }
 
         /**
-         * Use the event's userID find document in userDailyTnx collection
+         * Use the event's playerID and gameDate to find document in userDailyTnx
+         * collection
          *
          * @param event
          * @return
          */
         public int processChange(ChangeStreamDocument<Document> event) {
                 Document fullDocument = event.getFullDocument();
-
-                // add one logic about whether we need to process this event or not
+                // Validate necessary fields from the event
+                if (!fullDocument.containsKey("playerID") ||
+                                !fullDocument.containsKey("transactionID") ||
+                                !fullDocument.containsKey("value") ||
+                                !fullDocument.containsKey("name") ||
+                                !fullDocument.containsKey("date")) {
+                        LOGGER.error("Invalid document: Missing required fields, doc {}", fullDocument);
+                        return ERROR_INVALID_DOCUMENT; // Return error code for missing fields
+                }
 
                 // Extract necessary fields from the event
-                int userID = fullDocument.getInteger("userID");
+                int playerID = fullDocument.getInteger("playerID");
                 int transactionID = fullDocument.getInteger("transactionID");
                 double value = fullDocument.getDouble("value");
                 Date date = fullDocument.getDate("date");
+                String name = fullDocument.getString("name");
+                // Convert the date to midnight UTC
+                Calendar calendar = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
+                calendar.setTime(date);
+                calendar.set(Calendar.HOUR_OF_DAY, 0);
+                calendar.set(Calendar.MINUTE, 0);
+                calendar.set(Calendar.SECOND, 0);
+                calendar.set(Calendar.MILLISECOND, 0);
+
+                // Set the modified date to midnight UTC
+                Date gamingDate = calendar.getTime();
+
+                LOGGER.info("process event data: {} ", gamingDate);
 
                 // Construct the transaction object
-                Document transaction = new Document("transactionID", transactionID)
+                Document newTransaction = new Document("transactionID", transactionID)
                                 .append("value", value)
                                 .append("date", date);
 
-                // Define filter to find user document by userID
-                Document filter = new Document("userID", userID);
-
-                // Update operation: find the document and update the transaction array
-                Document update = new Document("$set", new Document("lastModified", new Date()))
-                                .append("$addToSet", new Document("txns", transaction));
-
+                // Define the filter to find the document using playerID and gamingDate
+                Document filter = new Document("playerID", playerID)
+                                .append("gamingDate", gamingDate);
                 // Check if the document exists
                 Document existingDoc = userDailyTxnCollection.find(filter).first();
 
                 if (existingDoc == null) {
-                        // Document doesn't exist, insert a new one
-                        Document newUserDoc = new Document("userID", userID)
-                                        .append("txns", List.of(transaction))
+                        // Document doesn't exist, insert a new one with the new transaction
+                        Document newUserDoc = new Document("playerID", playerID)
+                                        .append("gamingDate", gamingDate)
+                                        .append("name", name)
+                                        .append("txns", List.of(newTransaction))
                                         .append("lastModified", new Date());
 
                         userDailyTxnCollection.insertOne(newUserDoc);
-                        LOGGER.info("Inserted new document for userID: {}", userID);
+                        LOGGER.info("Inserted new document for playerID: {} and gamingDate: {}", playerID,
+                                        gamingDate);
                 } else {
-                        // Document exists, update the txns field
-                        userDailyTxnCollection.updateOne(filter, update, new UpdateOptions().upsert(true));
-                        LOGGER.info("Updated document for userID: {} with transactionID: {}", userID, transactionID);
+                        // Check if the transaction with the given transactionID exists
+                        boolean transactionExists = existingDoc.getList("txns", Document.class).stream()
+                                        .anyMatch(txn -> txn.getInteger("transactionID") == transactionID);
+
+                        if (transactionExists) {
+                                // Update only the existing transaction within the txns array
+                                Document updateTransaction = new Document("$set",
+                                                new Document("txns.$[elem]", newTransaction));
+                                UpdateOptions updateOptions = new UpdateOptions().arrayFilters(
+                                                List.of(new Document("elem.transactionID", transactionID)));
+
+                                // Update the transaction element inside the array
+                                userDailyTxnCollection.updateOne(filter, updateTransaction, updateOptions);
+                                LOGGER.info("Updated existing transaction for playerID: {} and transactionID: {}",
+                                                playerID, transactionID);
+
+                                // Update the lastModified field separately without array filters
+                                Document updateLastModified = new Document("$set",
+                                                new Document("lastModified", new Date()));
+                                userDailyTxnCollection.updateOne(filter, updateLastModified);
+                        } else {
+                                // Append the new transaction to the txns array and update lastModified
+                                Document update = new Document("$push", new Document("txns", newTransaction))
+                                                .append("$set", new Document("lastModified", new Date()));
+
+                                userDailyTxnCollection.updateOne(filter, update);
+                                LOGGER.info("Appended new transaction for playerID: {} and transactionID: {}",
+                                                playerID, transactionID);
+                        }
                 }
 
                 return 0;
         }
+
 }

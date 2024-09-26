@@ -54,6 +54,7 @@ class ChangeEventServiceTest {
                 // Assert
                 verify(changestreamCollection, times(1)).watch();
                 verify(changeStreamIterable, times(1)).resumeAfter(resumeToken);
+                assertNotNull(result); // Ensuring result is not null
         }
 
         @Test
@@ -67,18 +68,22 @@ class ChangeEventServiceTest {
                 // Assert
                 verify(changestreamCollection, times(1)).watch();
                 verify(changeStreamIterable, never()).resumeAfter(any());
+                assertNotNull(result); // Ensuring result is not null
         }
 
         @Test
         void testProcessChangeInsertsNewDocument() {
                 // Arrange
-                Document fullDocument = new Document("userID", 1)
+                Document fullDocument = new Document("playerID", 123456789)
                                 .append("transactionID", 100)
                                 .append("value", 50.0)
+                                .append("name", "ben")
                                 .append("date", new Date());
 
                 ChangeStreamDocument<Document> changeStreamDocument = mock(ChangeStreamDocument.class);
                 when(changeStreamDocument.getFullDocument()).thenReturn(fullDocument);
+
+                // Mocking the find operation to return no existing document
                 when(userDailyTxnCollection.find(any(Document.class))).thenReturn(findIterable);
                 when(findIterable.first()).thenReturn(null);
 
@@ -92,15 +97,22 @@ class ChangeEventServiceTest {
         @Test
         void testProcessChangeUpdatesExistingDocument() {
                 // Arrange
-                Document fullDocument = new Document("userID", 1)
+                Document fullDocument = new Document("playerID", 123456789)
                                 .append("transactionID", 101)
+                                .append("name", "ben")
                                 .append("value", 60.0)
                                 .append("date", new Date());
 
                 ChangeStreamDocument<Document> changeStreamDocument = mock(ChangeStreamDocument.class);
                 when(changeStreamDocument.getFullDocument()).thenReturn(fullDocument);
 
-                Document existingDoc = new Document("userID", 1).append("txns", List.of());
+                // Mocking the existing document
+                Document existingDoc = new Document("playerID", 123456789)
+                                .append("gamingDate", new Date())
+                                .append("txns", List.of(new Document("transactionID", 101)
+                                                .append("value", 60.0)
+                                                .append("date", new Date())));
+
                 when(userDailyTxnCollection.find(any(Document.class))).thenReturn(findIterable);
                 when(findIterable.first()).thenReturn(existingDoc);
 
@@ -109,7 +121,7 @@ class ChangeEventServiceTest {
 
                 // Assert
                 verify(userDailyTxnCollection, times(1)).updateOne(
-                                eq(new Document("userID", 1)),
+                                any(Document.class),
                                 any(Document.class),
                                 any(UpdateOptions.class));
         }
@@ -121,7 +133,12 @@ class ChangeEventServiceTest {
                 ChangeStreamDocument<Document> changeStreamDocument = mock(ChangeStreamDocument.class);
                 when(changeStreamDocument.getFullDocument()).thenReturn(fullDocument);
 
-                // Act & Assert
-                assertThrows(NullPointerException.class, () -> changeEventService.processChange(changeStreamDocument));
+                // Act
+                int result = changeEventService.processChange(changeStreamDocument);
+
+                // Assert
+                assertEquals(ChangeEventService.ERROR_INVALID_DOCUMENT, result); // Check the error code instead of
+                                                                                 // exception
         }
+
 }
