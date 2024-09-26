@@ -43,7 +43,67 @@ We need to update this transaction into target collection's doc
 ```
 1. One play will generate one doc per day, use playerID+ gamingDate as the daily target document filter.
 2. Match the player's daily one transaction with target collections' 'txns''s elements by 'transactionID' fields, if the the transaction exists, replace the element with change steam event. If not, append it int to the 'txns' array field. 
+3. Single mongoDB command solution
+``` bash
 
+db.userdailytxn.updateOne(
+  { playerID: 1001, gamingDate: ISODate('2024-09-26T00:00:00.000Z') }, // Find document by playerID and gamingDate
+  [
+    {
+      $set: {
+        playerID: "$$ROOT.playerID",
+        gamingDate: "$$ROOT.gamingDate",
+        name: { $ifNull: ["$name", "ben"] }, // Set 'name' when upserting
+        txns: {
+          $let: {
+            vars: {
+              newTxn: { transactionID: 100004, value: 33.1, date: ISODate() }, // Define the new transaction to be added or updated
+              existingTxn: {
+                $first: {
+                  $filter: {
+                    input: "$txns",
+                    cond: { $eq: ["$$this.transactionID", 100004] }, // Check for the existence of the new transactionID
+                  },
+                },
+              },
+            },
+            in: {
+              $cond: {
+                if: { $not: ["$$existingTxn"] }, // If the transaction does not exist
+                then: {
+                  $concatArrays: [
+                    { $ifNull: ["$txns", []] }, // Initialize txns array if not present
+                    ["$$newTxn"], // Add the new transaction
+                  ],
+                },
+                else: {
+                  $map: {
+                    input: "$txns",
+                    as: "txn",
+                    in: {
+                      $cond: {
+                        if: { $eq: ["$$txn.transactionID", 100004] }, // Match to replace only when transactionID matches
+                        then: "$$newTxn", // Replace with the new transaction values
+                        else: "$$txn", // Keep other transactions as is
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        lastModified: ISODate(), // Update the last modified date whenever the document is modified
+      },
+    },
+  ],
+  {
+    upsert: true, 
+    setOnInsert: { playerID: 1001, gamingDate: ISODate('2024-09-26T00:00:00.000Z'), name: 'ben' }, // Ensure these fields are set on insert
+  }
+);
+
+```
 
 ### Event sequence design
 1. Due to the multiple thread processing, one user's event may be consumed with different thread, that may cause the order violation for the some user's event.

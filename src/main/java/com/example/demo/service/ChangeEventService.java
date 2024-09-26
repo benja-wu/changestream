@@ -50,7 +50,7 @@ public class ChangeEventService {
          * @param event
          * @return
          */
-        public int processChange(ChangeStreamDocument<Document> event) {
+        public int processChangeMultipleCommands(ChangeStreamDocument<Document> event) {
                 Document fullDocument = event.getFullDocument();
                 // Validate necessary fields from the event
                 if (!fullDocument.containsKey("playerID") ||
@@ -135,6 +135,106 @@ public class ChangeEventService {
                         }
                 }
 
+                return 0;
+        }
+
+        /**
+         * Handle the upsert doc, replacing/push transaction into txns array field with
+         * one update command
+         * 
+         * @param event
+         * @return
+         */
+        /**
+         * Handle the upsert doc, replacing/push transaction into txns array field with
+         * one update command
+         * 
+         * @param event
+         * @return
+         */
+        public int processChange(ChangeStreamDocument<Document> event) {
+                Document fullDocument = event.getFullDocument();
+                // Validate necessary fields from the event
+                if (!fullDocument.containsKey("playerID") ||
+                                !fullDocument.containsKey("transactionID") ||
+                                !fullDocument.containsKey("value") ||
+                                !fullDocument.containsKey("name") ||
+                                !fullDocument.containsKey("date")) {
+                        LOGGER.error("Invalid document: Missing required fields, doc {}", fullDocument);
+                        return ERROR_INVALID_DOCUMENT; // Return error code for missing fields
+                }
+
+                // Extract necessary fields from the event
+                int playerID = fullDocument.getInteger("playerID");
+                int transactionID = fullDocument.getInteger("transactionID");
+                double value = fullDocument.getDouble("value");
+                Date date = fullDocument.getDate("date");
+                String name = fullDocument.getString("name");
+
+                // Convert the date to midnight UTC
+                Calendar calendar = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
+                calendar.setTime(date);
+                calendar.set(Calendar.HOUR_OF_DAY, 0);
+                calendar.set(Calendar.MINUTE, 0);
+                calendar.set(Calendar.SECOND, 0);
+                calendar.set(Calendar.MILLISECOND, 0);
+                Date gamingDate = calendar.getTime();
+
+                LOGGER.info("process event data: {}", gamingDate);
+
+                // Define the filter to find the document using playerID and gamingDate
+                Document filter = new Document("playerID", playerID)
+                                .append("gamingDate", gamingDate);
+
+                // Define the transaction object
+                Document newTransaction = new Document("transactionID", transactionID)
+                                .append("value", value)
+                                .append("date", date);
+
+                // Define the conditions and operations used in the update pipeline
+                Document setNameIfNull = new Document("$ifNull", List.of("$name", name));
+                Document existingTransactionCondition = new Document("$eq",
+                                List.of("$$this.transactionID", transactionID));
+                Document filterExistingTransaction = new Document("$filter", new Document("input", "$txns")
+                                .append("cond", existingTransactionCondition));
+                Document firstExistingTransaction = new Document("$first", filterExistingTransaction);
+
+                // Define the replacement or append logic
+                Document appendNewTransaction = new Document("$concatArrays", List.of(
+                                new Document("$ifNull", List.of("$txns", List.of())), List.of(newTransaction)));
+
+                Document mapTransactions = new Document("$map", new Document("input", "$txns")
+                                .append("as", "txn")
+                                .append("in", new Document("$cond", new Document("if",
+                                                new Document("$eq", List.of("$$txn.transactionID", transactionID)))
+                                                .append("then", newTransaction)
+                                                .append("else", "$$txn"))));
+
+                Document replaceOrAppendTransaction = new Document("$cond",
+                                new Document("if", new Document("$not", List.of("$$existingTxn")))
+                                                .append("then", appendNewTransaction)
+                                                .append("else", mapTransactions));
+
+                // Assemble the $let and $set operations in the update pipeline
+                Document letOperation = new Document("$let",
+                                new Document("vars", new Document("existingTxn", firstExistingTransaction))
+                                                .append("in", replaceOrAppendTransaction));
+
+                Document setOperation = new Document("$set", new Document()
+                                .append("playerID", playerID)
+                                .append("gamingDate", gamingDate)
+                                .append("name", setNameIfNull)
+                                .append("txns", letOperation)
+                                .append("lastModified", new Date()));
+
+                // Define the update pipeline
+                List<Document> updatePipeline = List.of(setOperation);
+
+                // Perform the update operation with upsert true
+                UpdateOptions options = new UpdateOptions().upsert(true);
+                userDailyTxnCollection.updateOne(filter, updatePipeline, options);
+
+                LOGGER.info("Processed update for playerID: {} and transactionID: {}", playerID, transactionID);
                 return 0;
         }
 

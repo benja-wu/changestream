@@ -18,7 +18,6 @@ import com.example.demo.service.ChangeEventService;
 import com.mongodb.client.ChangeStreamIterable;
 import com.mongodb.client.FindIterable;
 import com.mongodb.client.MongoCollection;
-import com.mongodb.client.model.UpdateOptions;
 import com.mongodb.client.model.changestream.ChangeStreamDocument;
 
 @SpringBootTest
@@ -90,8 +89,14 @@ class ChangeEventServiceTest {
                 // Act
                 changeEventService.processChange(changeStreamDocument);
 
-                // Assert
-                verify(userDailyTxnCollection, times(1)).insertOne(any(Document.class));
+                // Assert: Verify updateOne with upsert
+                verify(userDailyTxnCollection, times(1)).updateOne(
+                                argThat(doc -> doc instanceof Document &&
+                                                ((Document) doc).getInteger("playerID") == 123456789 &&
+                                                ((Document) doc).containsKey("gamingDate")), // Match the filter
+                                any(List.class), // Match any update pipeline
+                                argThat(options -> options.isUpsert()) // Check that upsert is true
+                );
         }
 
         @Test
@@ -119,11 +124,14 @@ class ChangeEventServiceTest {
                 // Act
                 changeEventService.processChange(changeStreamDocument);
 
-                // Assert
+                // Assert: Verify updateOne with correct filter, update pipeline, and options
                 verify(userDailyTxnCollection, times(1)).updateOne(
-                                any(Document.class),
-                                any(Document.class),
-                                any(UpdateOptions.class));
+                                argThat(doc -> doc instanceof Document &&
+                                                ((Document) doc).getInteger("playerID") == 123456789 &&
+                                                ((Document) doc).containsKey("gamingDate")), // Match the filter
+                                any(List.class), // Match any update pipeline
+                                argThat(options -> options.isUpsert()) // Ensure that upsert is set to true
+                );
         }
 
         @Test
