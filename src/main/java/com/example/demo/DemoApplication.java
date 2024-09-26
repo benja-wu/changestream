@@ -20,7 +20,7 @@ public class DemoApplication {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(DemoApplication.class);
 
-    @Value("${server.port:8081}") // Default port for metrics
+    @Value("${prometheus.server.port:8081}") // Default port for metrics
     private int metricsPort;
 
     @Autowired
