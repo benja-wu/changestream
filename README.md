@@ -1,23 +1,23 @@
 # changestream
 Java MongoDB changestream repo based on SpringBoot framework
 
-
 ## Design
-1. It's resumeable. It will store every resume token during business logic handling automattly 
-2. It has configurable autoretry logic during the event handling, for MongoDB Java driver, **Network Exceptions**, **Transient Errors**, and **Server Selection Errors** are retied automally by itself. Others exceptions, such as  MongoTimeoutException | MongoSocketReadException | MongoSocketWriteException | MongoCommandException | MongoWriteConcernException need to handle manully. 
-3. It supports multple threads execution with configurable thread numbers. 
-4. It watches one collection's change event only. If we need to watch multiple collections in MongoDB, start different instances with different configurations. 
+1. Resumeable. It will store every resume token during business logic handling automattly, and resume changestream listening using latest token at staring up. 
+2. AutoRetry. It has configurable autoretry logic during the event handling, for MongoDB Java driver, **Network Exceptions**, **Transient Errors**, and **Server Selection Errors** are retied automally by itself. Others exceptions, such as  MongoTimeoutException | MongoSocketReadException | MongoSocketWriteException | MongoCommandException | MongoWriteConcernException need to handle manully. 
+3. Multiple Threads. It supports multple threads execution with configurable thread numbers. 
+4. Single responsibility. It watches one collection's change event only. If we need to watch multiple collections in MongoDB, start different instances with different configurations. 
+5. Observability. It exposes TPS/P99 latency/Totol request numbers metrics with Prometheus library. 
 
 ## User case
-In the source collection, it will insert transaction doc as below:
-```json
-{"playerID":1001,"transactionID": 100003, "name":"ben","date":ISODate(), "value":23.1})
+In the source collection, user's new transaction doc will be inserted as below:
+``` bash
+{"playerID":1003,"transactionID": 100003, "name":"ben","date":ISODate(), "value":23.1})
 ```
 We need to update this transaction into target collection's doc 
-```json
+``` bash
 {
     _id: ObjectId('66f4e4cdb1b0f322afb766a8'),
-    playerID: 1001,
+    playerID: 1003,
     gamingDate: ISODate('2024-09-26T00:00:00.000Z'),
     name: 'ben',
     txns: [
@@ -47,7 +47,7 @@ We need to update this transaction into target collection's doc
 ``` bash
 
 db.userdailytxn.updateOne(
-  { playerID: 1001, gamingDate: ISODate('2024-09-26T00:00:00.000Z') }, // Find document by playerID and gamingDate
+  { playerID: 1003, gamingDate: ISODate('2024-09-26T00:00:00.000Z') }, // Find document by playerID and gamingDate
   [
     {
       $set: {
@@ -99,7 +99,7 @@ db.userdailytxn.updateOne(
   ],
   {
     upsert: true, 
-    setOnInsert: { playerID: 1001, gamingDate: ISODate('2024-09-26T00:00:00.000Z'), name: 'ben' }, // Ensure these fields are set on insert
+    setOnInsert: { playerID: 1003, gamingDate: ISODate('2024-09-26T00:00:00.000Z'), name: 'ben' }, // Ensure these fields are set on insert
   }
 );
 
