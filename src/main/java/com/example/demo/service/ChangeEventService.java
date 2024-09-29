@@ -21,7 +21,7 @@ import com.mongodb.client.model.changestream.ChangeStreamDocument;
  * Customized business logic for handling one change stream event
  */
 @Service
-public class ChangeEventService {
+public class ChangeEventService implements ChangeEventServiceInterface {
 
         private static final Logger LOGGER = LoggerFactory.getLogger(ChangeEventService.class);
         private final MongoCollection<Document> changestreamCollection;
@@ -36,6 +36,7 @@ public class ChangeEventService {
                 this.userDailyTxnCollection = userDailyTxnCollection;
         }
 
+        @Override
         public ChangeStreamIterable<Document> changeStreamIterator(BsonDocument resumeToken) {
                 // Start the change stream with or without a resume token
                 return resumeToken != null
@@ -145,13 +146,7 @@ public class ChangeEventService {
          * @param event
          * @return
          */
-        /**
-         * Handle the upsert doc, replacing/push transaction into txns array field with
-         * one update command
-         * 
-         * @param event
-         * @return
-         */
+        @Override
         public int processChange(ChangeStreamDocument<Document> event) {
                 Document fullDocument = event.getFullDocument();
                 // Validate necessary fields from the event

@@ -15,6 +15,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Configurable;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.retry.annotation.Backoff;
 import org.springframework.retry.annotation.Retryable;
@@ -42,7 +43,7 @@ import jakarta.annotation.PostConstruct;
 public class EventProcessingMediator {
 
         private static final Logger LOGGER = LoggerFactory.getLogger(EventProcessingMediator.class);
-        private final ChangeEventService changeEventService;
+        private final ChangeEventServiceInterface changeEventService;
         private final ResumeTokenService resumeTokenService;
         private final TpsCalculator tpsCalculator; // TPS calculator instance
         private final PrometheusMetricsConfig metricsConfig; //
@@ -58,7 +59,8 @@ public class EventProcessingMediator {
         private long shutdownTimeout; // Timeout value in seconds
 
         @Autowired
-        public EventProcessingMediator(ChangeEventService changeEventService, ResumeTokenService resumeTokenService,
+        public EventProcessingMediator(@Qualifier("changeEventService") ChangeEventServiceInterface changeEventService,
+                        ResumeTokenService resumeTokenService,
                         PrometheusMetricsConfig metricsConfig, TpsCalculator tpsCalculator) {
                 this.changeEventService = changeEventService;
                 this.resumeTokenService = resumeTokenService;
