@@ -32,6 +32,9 @@ public class ResumeTokenService {
                                 .append("resumeToken", resumeToken).append("date", new Date())
                                 .append("appName", "demoChangeStream");
 
+                //TODO: There maybe problem when multi-thread processing (i.e. later resume token may replace earilier resume token)
+                // suggested to also check the "date" or change the resume logic
+
                 // Use upsert to ensure each thread only updates its own record
                 resumeTokenCollection.updateOne(Filters.eq("threadID", threadName),
                                 new Document("$set", mongoDocument), new UpdateOptions().upsert(true));
