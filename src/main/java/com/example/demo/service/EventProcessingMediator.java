@@ -105,6 +105,7 @@ public class EventProcessingMediator {
          * 
          * @param event
          */
+
         @Retryable(value = { MongoTimeoutException.class, MongoSocketReadException.class,
                         MongoSocketWriteException.class, MongoCommandException.class,
                         MongoWriteConcernException.class }, maxAttemptsExpression = "${spring.mongodb.retry.maxattempts}", backoff = @Backoff(delayExpression = "${spring.mongodb.retry.initialdelayms}"))
@@ -133,7 +134,7 @@ public class EventProcessingMediator {
                 // Save the resume token after processing
                 BsonDocument resumeToken = event.getResumeToken();
                 if (resumeToken != null) {
-                        resumeTokenService.saveResumeToken(resumeToken, currentThreadName);
+                        resumeTokenService.saveResumeToken(event.getClusterTime(), resumeToken, currentThreadName);
                 }
 
                 double tps = tpsCalculator.calculateTps(currentThreadName);
