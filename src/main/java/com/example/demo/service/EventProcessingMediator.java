@@ -131,11 +131,10 @@ public class EventProcessingMediator {
                 // Call ChangeEventService to process the change event
                 changeEventService.processChange(event);
 
-                //TODO: at-least once, resume need de-dup logic or process need to be idempotent
                 // Save the resume token after processing
                 BsonDocument resumeToken = event.getResumeToken();
                 if (resumeToken != null) {
-                        resumeTokenService.saveResumeToken(resumeToken, currentThreadName);
+                        resumeTokenService.saveResumeToken(event.getClusterTime(), resumeToken, currentThreadName);
                 }
 
                 double tps = tpsCalculator.calculateTps(currentThreadName);

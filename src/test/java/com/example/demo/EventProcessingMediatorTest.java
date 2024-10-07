@@ -100,7 +100,7 @@ public class EventProcessingMediatorTest {
 
                 mediator.processEvent(event);
 
-                verify(resumeTokenService, times(1)).saveResumeToken(any(), anyString());
+                verify(resumeTokenService, times(1)).saveResumeToken(any(), any(), anyString());
         }
 
         @Test

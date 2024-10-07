@@ -1,8 +1,8 @@
 package com.example.demo.service;
 
-import java.util.Date;
 
 import org.bson.BsonDocument;
+import org.bson.BsonTimestamp;
 import org.bson.Document;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,12 +27,11 @@ public class ResumeTokenService {
                 this.resumeTokenCollection = resumeTokenCollection;
         }
 
-        public void saveResumeToken(BsonDocument resumeToken, String threadName) {
+        public void saveResumeToken(BsonTimestamp bsonTimestamp, BsonDocument resumeToken, String threadName) {
                 Document mongoDocument = new Document().append("threadName", threadName)
-                                .append("resumeToken", resumeToken).append("date", new Date())
+                                .append("resumeToken", resumeToken).append("date", bsonTimestamp)
                                 .append("appName", "demoChangeStream");
 
-                //TODO: There maybe problem when multi-thread processing (i.e. later resume token may replace earilier resume token)
                 // suggested to also check the "date" or change the resume logic
 
                 // Use upsert to ensure each thread only updates its own record

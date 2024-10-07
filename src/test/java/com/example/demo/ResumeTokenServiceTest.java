@@ -4,6 +4,7 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 import org.bson.BsonDocument;
+import org.bson.BsonTimestamp;
 import org.bson.Document;
 import org.bson.conversions.Bson;
 import org.junit.jupiter.api.BeforeEach;
@@ -39,7 +40,7 @@ public class ResumeTokenServiceTest {
                 BsonDocument resumeToken = new BsonDocument();
 
                 // Call the method under test
-                resumeTokenService.saveResumeToken(resumeToken, "TestThread");
+                resumeTokenService.saveResumeToken(new BsonTimestamp(), resumeToken, "TestThread");
 
                 // Explicitly specify the argument types to resolve ambiguity
                 verify(resumeTokenCollection, times(1)).updateOne(
