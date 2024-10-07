@@ -150,7 +150,7 @@ public class EventProcessingMediator {
 
         public BsonDocument getLatestResumeToken() {
                 // Delegate to ResumeTokenService to get the latest resume token
-                return resumeTokenService.getLatestResumeToken();
+                return resumeTokenService.getResumeToken();
         }
 
         public void shutdown() {

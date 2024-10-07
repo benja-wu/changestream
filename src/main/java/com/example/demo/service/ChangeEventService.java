@@ -141,7 +141,8 @@ public class ChangeEventService implements ChangeEventServiceInterface {
 
         /**
          * Handle the upsert doc, replacing/push transaction into txns array field with
-         * one update command
+         * one update command. process change is idempotent, so after resumeing, it can 
+         * handle already-handled event correctly. 
          * 
          * @param event
          * @return

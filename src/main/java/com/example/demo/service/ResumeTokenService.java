@@ -40,10 +40,13 @@ public class ResumeTokenService {
 
         }
 
-        public BsonDocument getLatestResumeToken() {
-                // Find the document with the latest date and retrieve its resume token
-                // Get the latest token
-                Document latestTokenDoc = resumeTokenCollection.find().sort(new Document("date", -1)).first();
+        public BsonDocument getResumeToken() {
+                // Find the document with the earliest date and retrieve its resume token
+                // Get the earliest resume token:
+                // Note: the previous already handled event will reprocessed after resuming, 
+                //       must work with idempotent event handling     
+
+                Document latestTokenDoc = resumeTokenCollection.find().sort(new Document("date", 1)).first();
                 LOGGER.info("The latest resume token document: {}", latestTokenDoc);
 
                 if (latestTokenDoc != null) {
