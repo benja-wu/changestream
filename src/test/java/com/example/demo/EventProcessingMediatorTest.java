@@ -1,9 +1,5 @@
 package com.example.demo;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
-
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -11,10 +7,20 @@ import java.util.concurrent.Executors;
 import org.bson.BsonDocument;
 import org.bson.BsonTimestamp;
 import org.bson.Document;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyDouble;
+import static org.mockito.ArgumentMatchers.anyString;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import org.mockito.MockitoAnnotations;
 
 import com.example.demo.metrics.PrometheusMetricsConfig;
@@ -25,6 +31,7 @@ import com.example.demo.service.ResumeTokenService;
 import com.mongodb.client.ChangeStreamIterable;
 import com.mongodb.client.model.changestream.ChangeStreamDocument;
 
+import io.prometheus.client.Counter;
 import io.prometheus.client.Gauge;
 import io.prometheus.client.Histogram;
 import io.prometheus.client.Summary;
@@ -77,6 +84,16 @@ public class EventProcessingMediatorTest {
                 when(metricsConfig.p99ProcessingTime()).thenReturn(mockSummary);
                 when(mockSummary.labels(any(String.class))).thenReturn(mockSummaryChild);
                 doNothing().when(mockSummaryChild).observe(anyDouble());
+
+                   // Mock the totalEventsHandled Counter
+                Counter totalEventsCounter = mock(Counter.class);
+                when(metricsConfig.totalEventsHandled()).thenReturn(totalEventsCounter);
+                doNothing().when(totalEventsCounter).inc();
+
+                // Mock the totalEventsHandledSuccessfully Counter
+                Counter totalEventsSuccessCounter = mock(Counter.class);
+                when(metricsConfig.totalEventsHandledSuccessfully()).thenReturn(totalEventsSuccessCounter);
+                doNothing().when(totalEventsSuccessCounter).inc();
         }
 
         @Test

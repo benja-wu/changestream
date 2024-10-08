@@ -127,9 +127,13 @@ public class EventProcessingMediator {
                 double eventLag = (startTimeMillis - eventMillis);
                 // Record event lag for the current thread
                 metricsConfig.eventLagPerThread().labels(currentThreadName).set(eventLag);
+                metricsConfig.totalEventsHandled().inc();
 
                 // Call ChangeEventService to process the change event
-                changeEventService.processChange(event);
+                int ret = changeEventService.processChange(event);
+                if (ret == 0) {
+                        metricsConfig.totalEventsHandledSuccessfully().inc();
+                }
 
                 // Save the resume token after processing
                 BsonDocument resumeToken = event.getResumeToken();
