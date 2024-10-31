@@ -16,6 +16,8 @@ import com.mongodb.client.ChangeStreamIterable;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.model.UpdateOptions;
 import com.mongodb.client.model.changestream.ChangeStreamDocument;
+import com.mongodb.client.model.changestream.FullDocument;
+import com.mongodb.client.model.changestream.FullDocumentBeforeChange;
 
 /**
  * Customized business logic for handling one change stream event
@@ -39,9 +41,15 @@ public class ChangeEventService implements ChangeEventServiceInterface {
         @Override
         public ChangeStreamIterable<Document> changeStreamIterator(BsonDocument resumeToken) {
                 // Start the change stream with or without a resume token
-                return resumeToken != null
-                                ? changestreamCollection.watch().resumeAfter(resumeToken)
-                                : changestreamCollection.watch();
+                ChangeStreamIterable<Document> changeStream = resumeToken != null
+                ? changestreamCollection.watch().resumeAfter(resumeToken)
+                : changestreamCollection.watch();
+
+                 // Configure the change stream to include both before and after change documents
+                changeStream.fullDocument(FullDocument.UPDATE_LOOKUP);
+                changeStream.fullDocumentBeforeChange(FullDocumentBeforeChange.WHEN_AVAILABLE);
+
+                return changeStream;
         }
 
         /**

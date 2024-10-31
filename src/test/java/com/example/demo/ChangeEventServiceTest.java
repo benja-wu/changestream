@@ -1,18 +1,25 @@
 package com.example.demo;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
-
 import java.util.Date;
 import java.util.List;
 
 import org.bson.BsonDocument;
 import org.bson.Document;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import org.junit.jupiter.api.Test;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 
 import com.example.demo.service.ChangeEventService;
 import com.mongodb.client.ChangeStreamIterable;
@@ -39,6 +46,16 @@ class ChangeEventServiceTest {
 
         @Autowired
         private ChangeEventService changeEventService;
+
+        @DynamicPropertySource
+        static void dynamicProperties(DynamicPropertyRegistry registry) {
+        String mongodbUri = System.getenv("MONGODB_URI"); // Read environment variable
+        if (mongodbUri != null) {
+            registry.add("spring.mongodb.uri", () -> mongodbUri);
+        } else {
+            throw new IllegalStateException("MONGODB_URI environment variable not set");
+        }
+    }
 
         @Test
         void testChangeStreamIteratorWithResumeToken() {
