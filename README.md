@@ -5,8 +5,8 @@ Java MongoDB changestream repo based on SpringBoot framework
 1. **Resumable**. It will automatically store every resume token during business logic processing and resume changestream listener using saved token when it starts. **Note:** Since it can't be guarantee that every resume token can be stored successfully(VM crashed? network partition? ), this framework will use the earestly resume token among all threads in that last round. So multiple events(related to the number of threads) will be delivered twice(each player's events keep order). Please make sure your event processing logic is **idempotent**. You can use the user case below as a reference. 
 2. **AutoRetry**. It has configurable auto-retry logic during the event handling, for MongoDB Java driver, **Network Exceptions**, **Transient Errors**, and **Server Selection Errors** are retied autumnally by itself. Others exceptions, such as  MongoTimeoutException | MongoSocketReadException | MongoSocketWriteException | MongoCommandException | MongoWriteConcernException need to handle manually. 
 3. **Multiple Threads**. It supports multiple threads execution with configurable thread numbers. 
-4. **Extensibility**. This demo has two business logic handler in `src/main/java/com/example/demo/service/impl/task1.java` and `src/main/java/com/example/demo/service/impl/task2.java`folder. Can reuse demo as example to add cuztomized business logic handling. 
-5. **Observability**. It exposes TPS/P99 latency/Total request numbers metrics with Prometheus library.
+4. **Extensibility**. This demo has two business logic handler in `src/main/java/com/example/demo/service/impl/task1.java` and `src/main/java/com/example/demo/service/impl/task2.java`folder, task1 implements one complicated pipeline, and task2 only display the event. Can reuse demo as example to add your new customized business logic. 
+5. **Observability**. It exposes TPS/P99 latency/Total request numbers metrics with Prometheus library and HTTP endpoint.
 
 ## User case
 In `src/main/java/com/example/demo/service/impl/task1.java`,  it watches the source collection, user's new transaction doc will be inserted as below:
