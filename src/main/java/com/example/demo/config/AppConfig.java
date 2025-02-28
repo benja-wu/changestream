@@ -12,4 +12,5 @@ public class AppConfig {
         public double tpsAlphaValue() {
                 return 0.1; // Set alpha value for TPS calculations
         }
+
 }

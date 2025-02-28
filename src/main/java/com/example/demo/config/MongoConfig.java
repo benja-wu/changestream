@@ -1,12 +1,18 @@
 package com.example.demo.config;
 
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
+
+import javax.annotation.PostConstruct;
 
 import org.bson.Document;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import com.example.demo.metrics.PrometheusMetricsConfig;
 import com.mongodb.ConnectionString;
 import com.mongodb.MongoClientSettings;
 import com.mongodb.ReadPreference;
@@ -14,54 +20,79 @@ import com.mongodb.WriteConcern;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
 import com.mongodb.client.MongoCollection;
-import com.mongodb.connection.ConnectionPoolSettings;
+import com.mongodb.client.MongoDatabase;
 
 @Configuration
 public class MongoConfig {
 
-        @Value("${spring.mongodb.uri}")
-        private String mongoUri;
+    @Value("${spring.mongodb.uri}")
+    private String mongoUri;
 
-        @Value("${spring.mongodb.resumetoken.collection}")
-        private String resumeTokenCollName;
+    @Value("${spring.mongodb.database}")
+    private String databaseName;
 
-        @Value("${spring.mongodb.collection}")
-        private String collName;
+    @Value("${spring.mongodb.collections}")
+    private String[] collections;
 
-        @Value("${spring.mongodb.txn.collection}")
-        private String txncollName;
+    @Value("${spring.mongodb.resumetoken.collection}")
+    private String resumeTokenCollectionName;
 
-        @Value("${spring.mongodb.database}")
-        private String dbName;
+    // Create a SINGLE MongoClient bean (Reuse this everywhere)
+    @Bean
+    public MongoClient mongoClient() {
+        return MongoClients.create(MongoClientSettings.builder()
+                .applyConnectionString(new ConnectionString(mongoUri))
+                .applyToConnectionPoolSettings(builder -> builder.maxSize(128).minSize(64))
+                .applyToSocketSettings(builder -> builder.connectTimeout(30, TimeUnit.SECONDS))
+                .retryWrites(true)
+                .readPreference(ReadPreference.nearest())
+                .writeConcern(WriteConcern.MAJORITY)
+                .applicationName("changeStreamDemo")
+                .build());
+    }
 
-        // Bean configuration for MongoClient
-        @Bean
-        public MongoClient mongoClient() {
-                MongoClientSettings clientSettings = MongoClientSettings.builder()
-                                .applyConnectionString(new ConnectionString(mongoUri))
-                                .applyToConnectionPoolSettings((ConnectionPoolSettings.Builder builder) -> builder
-                                                .maxSize(128).minSize(64))
-                                .applyToSocketSettings(builder -> builder.connectTimeout(30, TimeUnit.SECONDS))
-                                .retryWrites(true).readPreference(ReadPreference.nearest())
-                                .writeConcern(WriteConcern.MAJORITY).applicationName("changeStreamDemo").build();
+    @Bean
+    public MongoDatabase mongoDatabase(MongoClient mongoClient) {
+        return mongoClient.getDatabase(databaseName);
+    }
 
-                return MongoClients.create(clientSettings);
+    @Bean
+    public Map<String, MongoCollection<Document>> collectionMap(MongoDatabase mongoDatabase) {
+        Map<String, MongoCollection<Document>> collectionMap = new HashMap<>();
+
+        if (collections == null || collections.length == 0) {
+            throw new IllegalStateException("ERROR: No collections defined in 'spring.mongodb.collections'.");
         }
 
-        // Bean configuration for the Resume Token Collection
-        @Bean
-        public MongoCollection<Document> resumeTokenCollection(MongoClient mongoClient) {
-                return mongoClient.getDatabase(dbName).getCollection(resumeTokenCollName, Document.class);
+        System.out.printf("✅ Registering collections: %s \n", Arrays.toString(collections));
+        
+        for (String collectionName : collections) {
+            MongoCollection<Document> collection = mongoDatabase.getCollection(collectionName);
+            collectionMap.put(collectionName, collection);
+            System.out.println("✅ Registered collection: in map " + collectionName);
         }
 
-        // Bean configuration for the main collection that DemoApplication watches
-        @Bean
-        public MongoCollection<Document> changestreamCollection(MongoClient mongoClient) {
-                return mongoClient.getDatabase(dbName).getCollection(collName, Document.class);
-        }
+         // ✅ Explicitly add the resume token collection to avoid overwriting
+         collectionMap.put(resumeTokenCollectionName, mongoDatabase.getCollection(resumeTokenCollectionName));
+         System.out.println("✅ Registered collection: " + resumeTokenCollectionName);
+ 
+        return collectionMap;
+    }
 
-        @Bean
-        public MongoCollection<Document> userDailyTxnCollection(MongoClient mongoClient) {
-                return mongoClient.getDatabase(dbName).getCollection(txncollName, Document.class);
+    /*
+    @Bean
+    public MongoCollection<Document> resumeTokenCollection(MongoDatabase mongoDatabase) {
+        return mongoDatabase.getCollection(resumeTokenCollectionName);
+    }
+    */
+
+    /** ✅ Register Prometheus Metrics for Each Collection from Config */
+    @PostConstruct
+    public void registerPrometheusMetrics() {
+        for (String collection : collections) {
+            PrometheusMetricsConfig.getInstance(collection);
         }
+        // Also register for resume tokens collection
+        PrometheusMetricsConfig.getInstance(resumeTokenCollectionName);
+    }
 }

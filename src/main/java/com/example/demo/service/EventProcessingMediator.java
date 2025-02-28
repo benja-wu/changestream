@@ -1,8 +1,9 @@
-// EventProcessingMediator.java
 package com.example.demo.service;
 
 import java.time.Duration;
-import java.util.concurrent.CompletableFuture;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
@@ -14,199 +15,115 @@ import org.bson.Document;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Configurable;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.retry.annotation.Backoff;
-import org.springframework.retry.annotation.Retryable;
+import org.springframework.context.annotation.DependsOn;
 import org.springframework.stereotype.Service;
 
-import com.example.demo.metrics.PrometheusMetricsConfig;
-import com.example.demo.metrics.TpsCalculator;
-import com.mongodb.MongoCommandException;
-import com.mongodb.MongoSocketReadException;
-import com.mongodb.MongoSocketWriteException;
-import com.mongodb.MongoTimeoutException;
-import com.mongodb.MongoWriteConcernException;
-import com.mongodb.client.ChangeStreamIterable;
-import com.mongodb.client.model.changestream.ChangeStreamDocument;
+import com.mongodb.client.MongoCollection;
 
 import jakarta.annotation.PostConstruct;
 
-/**
- * EventProcessingMediator uses ChangeEventService and ResumeTokenService to
- * listen to one mongoDB
- * collection's change event, it's resumable and enable max attempt retry logic
- */
 @Service
-@Configurable
+@DependsOn("collectionMap")
 public class EventProcessingMediator {
+    private static final Logger LOGGER = LoggerFactory.getLogger(EventProcessingMediator.class);
+    private final Map<String, BusinessTask> tasks = new HashMap<>();
+    private final Map<String, MongoCollection<Document>> collectionMap;
+    private ExecutorService executorService;
+    private final AtomicInteger threadCounter = new AtomicInteger();
 
-        private static final Logger LOGGER = LoggerFactory.getLogger(EventProcessingMediator.class);
-        private final ChangeEventServiceInterface changeEventService;
-        private final ResumeTokenService resumeTokenService;
-        private final TpsCalculator tpsCalculator; // TPS calculator instance
-        private final PrometheusMetricsConfig metricsConfig; //
-        private ExecutorService[] executors;
-        private final AtomicInteger threadCounter = new AtomicInteger();
+    @Value("${spring.threadpool.nums}")
+    private int nums;
 
-        @Value("${spring.threadpool.nums}")
-        private int nums;
+    @Value("${spring.lifecycle.timeout-per-shutdown-phase:30s}")
+    private String shutdownTimeoutString;
+    private long shutdownTimeout;
 
-        @Value("${spring.lifecycle.timeout-per-shutdown-phase:30s}") // Configurable shutdown timeout duration
-        private String shutdownTimeoutString;
-
-        private long shutdownTimeout; // Timeout value in seconds
-
-        @Autowired
-        public EventProcessingMediator(@Qualifier("changeEventService") ChangeEventServiceInterface changeEventService,
-                        ResumeTokenService resumeTokenService,
-                        PrometheusMetricsConfig metricsConfig, TpsCalculator tpsCalculator) {
-                this.changeEventService = changeEventService;
-                this.resumeTokenService = resumeTokenService;
-                this.metricsConfig = metricsConfig; // Inject metrics configuration
-                this.tpsCalculator = tpsCalculator; // In
+    @Autowired
+    public EventProcessingMediator(Map<String, MongoCollection<Document>> collectionMap, List<BusinessTask> businessTasks) {
+        this.collectionMap = collectionMap;
+        
+        LOGGER.info("the collectionMap is {}", collectionMap);
+        for (BusinessTask task : businessTasks) {
+            String collectionName = task.getCollectionName();
+            MongoCollection<Document> collection = collectionMap.get(collectionName);
+            
+            if (collection != null) {
+                task.setCollection(collection);
+                tasks.put(collectionName, task);
+                LOGGER.info("Mapped task {} to collection {}", task.getClass().getSimpleName(), collectionName);
+            } else {
+                LOGGER.warn("No matching collection found for task: {}", collectionName);
+            }
         }
+    }
 
-        @PostConstruct
-        public void init() {
-                metricsConfig.totalEventsHandled();
-                metricsConfig.totalEventsHandledSuccessfully();
-                metricsConfig.eventLagPerThread();
-                metricsConfig.eventProcessDuration();
-                metricsConfig.tpsPerThread();
-                metricsConfig.p99ProcessingTime();
+    @PostConstruct
+    public void init() {
+        this.shutdownTimeout = Duration.parse("PT" + shutdownTimeoutString.replaceAll("[^0-9]", "") + "S")
+                .getSeconds();
+        executorService = Executors.newFixedThreadPool(nums, daemonThreadFactory());
+    }
 
-                // Parse the shutdown timeout string to seconds
-                this.shutdownTimeout = Duration.parse("PT" + shutdownTimeoutString.replaceAll("[^0-9]", "") + "S")
-                                .getSeconds();
-                // Initialize the executor with the daemon thread factory
-                // Initialize a pool of executor services with daemon threads
-                executors = new ExecutorService[nums];
-                ThreadFactory daemonThreadFactory = runnable -> {
-                        Thread thread = new Thread(runnable);
-                        thread.setDaemon(true);
-                        thread.setName("Thread-" + threadCounter.getAndIncrement());
-                        return thread;
-                };
-                for (int i = 0; i < nums; i++) {
-                        executors[i] = Executors.newSingleThreadExecutor(daemonThreadFactory);
-                }
+    private ThreadFactory daemonThreadFactory() {
+        return runnable -> {
+            Thread thread = new Thread(runnable);
+            thread.setDaemon(true);
+            thread.setName("ChangeStream-" + threadCounter.getAndIncrement());
+            return thread;
+        };
+    }
+
+    public void startChangeStreamListeners() {
+        for (String collectionName : tasks.keySet()) {
+            LOGGER.info("task is for collection : {} ",collectionName ); 
+            executorService.submit(() -> listenForChanges(collectionName));
         }
+        LOGGER.info("Started change stream listeners for all collections.");
+    }
 
-        public ChangeStreamIterable<Document> changeStreamIterator(BsonDocument resumeToken) {
-                return changeEventService.changeStreamIterator(resumeToken);
+    private void listenForChanges(String collectionName) {
+        BusinessTask task = tasks.get(collectionName);
+        if (task == null) {
+            LOGGER.warn("No task found for collection: {}", collectionName);
+            return;
         }
-
-        /**
-         * Use Spring @Retryable to auto retry network relate exceptions in MongoDB
-         * The NoPrimaryException in MongoDB Driver client is handled by native dirver
-         * already.
-         * 
-         * @param event
-         */
-
-        @Retryable(value = { MongoTimeoutException.class, MongoSocketReadException.class,
-                        MongoSocketWriteException.class, MongoCommandException.class,
-                        MongoWriteConcernException.class }, maxAttemptsExpression = "${spring.mongodb.retry.maxattempts}", backoff = @Backoff(delayExpression = "${spring.mongodb.retry.initialdelayms}"))
-        public void processEvent(ChangeStreamDocument<Document> event) {
-                String currentThreadName = Thread.currentThread().getName();
-                long startTimeMillis = System.currentTimeMillis();
-                LOGGER.info("Thread " + currentThreadName + "  is correctly processing change: {}" + event);
-
-                long eventMillis;
-                Document fullDocument = event.getFullDocument();
-                if (fullDocument != null && fullDocument.containsKey("date")) {
-                        eventMillis = ((java.util.Date) fullDocument.get("date")).getTime();
-                } else {
-                        eventMillis = event.getClusterTime().getTime() * 1000;
-                }
-
-                // Record the event for TPS calculation
-                tpsCalculator.recordEvent(currentThreadName);
-                double eventLag = (startTimeMillis - eventMillis);
-                // Record event lag for the current thread
-                metricsConfig.eventLagPerThread().labels(currentThreadName).set(eventLag);
-                metricsConfig.totalEventsHandled().inc();
-
-                // Call ChangeEventService to process the change event
-                int ret = changeEventService.processChange(event);
-                if (ret == 0) {
-                        metricsConfig.totalEventsHandledSuccessfully().inc();
-                }
-
-                // Save the resume token after processing
-                BsonDocument resumeToken = event.getResumeToken();
-                if (resumeToken != null) {
-                        resumeTokenService.saveResumeToken(event.getClusterTime(), resumeToken, currentThreadName);
-                }
-
-                double tps = tpsCalculator.calculateTps(currentThreadName);
-                metricsConfig.tpsPerThread().labels(currentThreadName).set(tps);
-                // Record the processing duration
-                // Calculate and observe the processing duration
-                long durationMillis = System.currentTimeMillis() - startTimeMillis; // Duration in milliseconds
-                double durationSeconds = durationMillis / 1000.0; // Convert duration to seconds
-
-                metricsConfig.eventProcessDuration().observe(durationSeconds);
-                metricsConfig.p99ProcessingTime().observe(durationMillis);
+    
+        if (task.resumeTokenService == null) {
+            LOGGER.error("❌ resumeTokenService is NULL for collection: {}", collectionName);
+        } else {
+            LOGGER.info("✅ resumeTokenService is initialized for collection: {}", collectionName);
         }
-
-        public BsonDocument getLatestResumeToken() {
-                // Delegate to ResumeTokenService to get the latest resume token
-                return resumeTokenService.getResumeToken();
+    
+        LOGGER.info("🔍 Retrieving resume token for collection: {}", collectionName);
+        BsonDocument resumeToken = task.resumeTokenService.getResumeToken(collectionName);
+    
+        if (resumeToken == null) {
+            LOGGER.warn("⚠ No resume token found for {}, starting from the latest event", collectionName);
+        } else {
+            LOGGER.info("✅ Using resume token for {}: {}", collectionName, resumeToken);
         }
+    
+        LOGGER.info("Starting change stream for collection: {}", collectionName);
+    
+        task.changeStreamIterator(resumeToken).forEach(event -> {
+            LOGGER.info("🟢 Received change event for collection: {}", collectionName);
+            String threadName = Thread.currentThread().getName();
+            task.startProcessing(threadName, event);
+        });
+    }
+    
 
-        public void shutdown() {
-                LOGGER.info("Shutdown requested, closing change stream...");
-                for (ExecutorService executor : executors) {
-                        if (executor != null) {
-                                executor.shutdown();
-                                try {
-                                        if (!executor.awaitTermination(shutdownTimeout, TimeUnit.SECONDS)) {
-                                                executor.shutdownNow();
-                                                if (!executor.awaitTermination(shutdownTimeout, TimeUnit.SECONDS)) {
-                                                        LOGGER.error("Executor service did not terminate gracefully.");
-                                                }
-                                        }
-                                } catch (InterruptedException ie) {
-                                        executor.shutdownNow();
-                                        Thread.currentThread().interrupt();
-                                }
-                        }
-                }
+    public void shutdown() {
+        LOGGER.info("Shutdown requested, closing change stream...");
+        executorService.shutdown();
+        try {
+            if (!executorService.awaitTermination(shutdownTimeout, TimeUnit.SECONDS)) {
+                executorService.shutdownNow();
+            }
+        } catch (InterruptedException ie) {
+            executorService.shutdownNow();
+            Thread.currentThread().interrupt();
         }
-
-        /**
-         * MongoNotPrimaryException is not need to handle manually
-         */
-        public void changeStreamProcessWithRetry() {
-                BsonDocument resumeToken = getLatestResumeToken();
-                ChangeStreamIterable<Document> changeStream = changeStreamIterator(resumeToken);
-
-                // special logic, make sure the same playerID event will be handled in the same
-                // thread for ever.
-                changeStream.forEach(event -> {
-                        LOGGER.info("Received event, starting handling {}", event);
-                        try {
-                                Document fullDocument = event.getFullDocument();
-                                int playerID = fullDocument.getInteger("playerID");
-                                // Determine which executor to use based on playerID
-                                int executorIndex = playerID % nums;
-
-                                LOGGER.info("evnet {}, playerID {}, executor index {}", event, playerID, executorIndex);
-                                // Submit the task to the corresponding executor
-                                CompletableFuture.runAsync(() -> processEvent(event), executors[executorIndex])
-                                                .exceptionally(ex -> {
-                                                        // Log the exception that occurred inside processEvent
-                                                        LOGGER.error("Exception occurred while processing event: {}",
-                                                                        event, ex);
-                                                        return null; // return null since exceptionally requires a
-                                                                     // return value
-                                                });
-                        } catch (Exception e) {
-                                LOGGER.error("Non-retryable exception occurred while processing event: {}", event, e);
-                        }
-                });
-        }
+    }
 }
