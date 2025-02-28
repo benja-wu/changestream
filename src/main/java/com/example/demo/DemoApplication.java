@@ -26,12 +26,7 @@ public class DemoApplication {
 
     private HTTPServer httpServer;
 
-    public static void main(String[] args) {
-        ApplicationContext context = SpringApplication.run(DemoApplication.class, args);
-        EventProcessingMediator mediator = context.getBean(EventProcessingMediator.class);
-        mediator.init();
-    }
-
+  
     @PostConstruct
     public void init() {
         startHttpServer();
@@ -68,5 +63,12 @@ public class DemoApplication {
             LOGGER.error("Error closing MongoDB connection: {}", e);
         }
     }
+
+    public static void main(String[] args) {
+        ApplicationContext context = SpringApplication.run(DemoApplication.class, args);
+        EventProcessingMediator mediator = context.getBean(EventProcessingMediator.class);
+        mediator.init();
+    }
+
 }
 

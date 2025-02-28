@@ -1,4 +1,4 @@
-package com.example.demo.service;
+package com.example.demo.service.impl;
 
 import java.util.Calendar;
 import java.util.Date;
@@ -12,6 +12,8 @@ import org.springframework.stereotype.Service;
 
 import com.example.demo.metrics.PrometheusMetricsConfig;
 import com.example.demo.metrics.TpsCalculator;
+import com.example.demo.service.BusinessTask;
+import com.example.demo.service.ResumeTokenService;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.model.UpdateOptions;
 import com.mongodb.client.model.changestream.ChangeStreamDocument;
@@ -20,6 +22,7 @@ import com.mongodb.client.model.changestream.ChangeStreamDocument;
 public class Task1 extends BusinessTask {
     private static final Logger LOGGER = LoggerFactory.getLogger(Task1.class);
 
+    // the watching target collection name in MongoDB
     private static final String TASK_COLLECTION_NAME = "changestream";
 
     public Task1(ResumeTokenService resumeTokenService, TpsCalculator tpsCalculator, MongoClient mongoClient) {
@@ -28,6 +31,8 @@ public class Task1 extends BusinessTask {
               PrometheusMetricsConfig.getInstance(TASK_COLLECTION_NAME), // ✅ No @Autowired
               TASK_COLLECTION_NAME, mongoClient);
     }
+
+
     @Override
     protected int processChange(ChangeStreamDocument<Document> event) {
         Document fullDocument = event.getFullDocument();

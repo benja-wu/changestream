@@ -12,6 +12,10 @@ import com.mongodb.client.model.changestream.ChangeStreamDocument;
 import com.mongodb.client.model.changestream.FullDocument;
 import com.mongodb.client.model.changestream.FullDocumentBeforeChange;
 
+/**
+ * BusinessTask encapsulates the logic for handling change stream events, including resuming from a specific token 
+ * and processing each event.
+ */
 public abstract class BusinessTask {
     protected final ResumeTokenService resumeTokenService;
     protected final TpsCalculator tpsCalculator;

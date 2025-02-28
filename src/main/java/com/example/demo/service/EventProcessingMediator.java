@@ -23,6 +23,10 @@ import com.mongodb.client.MongoCollection;
 
 import jakarta.annotation.PostConstruct;
 
+/**
+ * EventProcessingMediator coordinates multiple BusinessTask instances, each responsible for 
+ * a different MongoDB collection, and manages their lifecycle
+ */
 @Service
 @DependsOn("collectionMap")
 public class EventProcessingMediator {

@@ -72,21 +72,15 @@ public class MongoConfig {
             System.out.println("✅ Registered collection: in map " + collectionName);
         }
 
-         // ✅ Explicitly add the resume token collection to avoid overwriting
+         // Explicitly add the resume token collection to avoid overwriting
          collectionMap.put(resumeTokenCollectionName, mongoDatabase.getCollection(resumeTokenCollectionName));
          System.out.println("✅ Registered collection: " + resumeTokenCollectionName);
  
         return collectionMap;
     }
 
-    /*
-    @Bean
-    public MongoCollection<Document> resumeTokenCollection(MongoDatabase mongoDatabase) {
-        return mongoDatabase.getCollection(resumeTokenCollectionName);
-    }
-    */
 
-    /** ✅ Register Prometheus Metrics for Each Collection from Config */
+    /**  Register Prometheus Metrics for Each Collection from Config */
     @PostConstruct
     public void registerPrometheusMetrics() {
         for (String collection : collections) {
