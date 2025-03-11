@@ -1,5 +1,8 @@
 package com.example.demo.service.impl;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import org.bson.Document;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -14,15 +17,15 @@ import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.model.changestream.ChangeStreamDocument;
 
 @Service
-public class tPlayerPoints extends BusinessTask {
+public class PromotionRedemption extends BusinessTask {
 
-    private static final String TASK_COLLECTION_NAME = "tPlayerPoints";
+    private static final String TASK_COLLECTION_NAME = "tPromotionRedemption";
     private final MongoClient mongoClient;
     private final String databaseName;
     private final AwardCalculationService awardCalculationService;
 
-    public tPlayerPoints(ResumeTokenService resumeTokenService, TpsCalculator tpsCalculator, MongoClient mongoClient,
-                         AwardCalculationService awardCalculationService, @Value("${spring.mongodb.database}") String databaseName) {
+    public PromotionRedemption(ResumeTokenService resumeTokenService, TpsCalculator tpsCalculator, MongoClient mongoClient,
+                                   AwardCalculationService awardCalculationService, @Value("${spring.mongodb.database}") String databaseName) {
         super(resumeTokenService, tpsCalculator,
                 PrometheusMetricsConfig.getInstance(TASK_COLLECTION_NAME),
                 TASK_COLLECTION_NAME, mongoClient);
@@ -37,19 +40,28 @@ public class tPlayerPoints extends BusinessTask {
         MongoCollection<Document> tAwardsCollection = database.getCollection("tAwards");
         MongoCollection<Document> memberAwardsCollection = database.getCollection("member_awards");
 
-        Document tPlayerPoints = event.getFullDocument();
-        if (tPlayerPoints == null) return 0;
+        Document tPromotionRedemption = event.getFullDocument();
+        if (tPromotionRedemption == null) return 0;
 
-        // Retrieve corresponding tAwards using TrainId
-        Document tAwards = tAwardsCollection.find(new Document("TrainId", tPlayerPoints.get("TrainId"))).first();
-        if (tAwards == null) return 0;
+        // Find all matching tAwards using tPlayerID and tPrizeID
+        List<Document> tAwardsList = tAwardsCollection.find(new Document("PlayerID", tPromotionRedemption.get("PlayerID"))
+                .append("PrizeID", tPromotionRedemption.get("PrizeID"))).into(new ArrayList<>());
 
-        // Process award calculation
-        Document memberAward = awardCalculationService.calculateAward(tAwards);
-        if (memberAward == null) return 0;
+        if (tAwardsList.isEmpty()) return 0;
 
-        // Store into member_awards collection
-        memberAwardsCollection.insertOne(memberAward);
-        return 1;
+        int processedCount = 0;
+
+        for (Document tAwards : tAwardsList) {
+            // Get related documents using tAwards.tranId
+
+            // Process award calculation
+            Document memberAward = awardCalculationService.calculateAward(tAwards);
+            if (memberAward == null) continue;
+            // Store into member_awards collection
+            memberAwardsCollection.insertOne(memberAward);
+            processedCount++;
+        }
+
+        return processedCount;
     }
 }
