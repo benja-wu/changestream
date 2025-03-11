@@ -1,6 +1,7 @@
 package com.example.demo.service.impl;
 
 import org.bson.Document;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import com.example.demo.metrics.PrometheusMetricsConfig;
@@ -13,23 +14,26 @@ import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.model.changestream.ChangeStreamDocument;
 
 @Service
-public class tPlayerPromoTask extends BusinessTask {
+public class tPlayerPromo extends BusinessTask {
 
     private static final String TASK_COLLECTION_NAME = "tPlayerPromo";
     private final MongoClient mongoClient;
+    private final String databaseName;
     private final AwardCalculationService awardCalculationService;
 
-    public tPlayerPromoTask(ResumeTokenService resumeTokenService, TpsCalculator tpsCalculator, MongoClient mongoClient) {
+    public tPlayerPromo(ResumeTokenService resumeTokenService, TpsCalculator tpsCalculator, MongoClient mongoClient,
+                        AwardCalculationService awardCalculationService, @Value("${spring.mongodb.database}") String databaseName) {
         super(resumeTokenService, tpsCalculator,
                 PrometheusMetricsConfig.getInstance(TASK_COLLECTION_NAME),
                 TASK_COLLECTION_NAME, mongoClient);
         this.mongoClient = mongoClient;
-        this.awardCalculationService = new AwardCalculationService(this.mongoClient);
+        this.awardCalculationService = awardCalculationService;
+        this.databaseName = databaseName;
     }
 
     @Override
     public int processChange(ChangeStreamDocument<Document> event) {
-        MongoDatabase database = mongoClient.getDatabase("yourDatabase");
+        MongoDatabase database = mongoClient.getDatabase(databaseName);
         MongoCollection<Document> tAwardsCollection = database.getCollection("tAwards");
         MongoCollection<Document> memberAwardsCollection = database.getCollection("member_awards");
 
@@ -44,7 +48,7 @@ public class tPlayerPromoTask extends BusinessTask {
         Document memberAward = awardCalculationService.calculateAward(tAwards);
         if (memberAward == null) return 0;
 
-        // Insert result into member_awards collection
+        // Store into member_awards collection
         memberAwardsCollection.insertOne(memberAward);
         return 1;
     }
