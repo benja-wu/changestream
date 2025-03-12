@@ -19,7 +19,7 @@ import com.mongodb.client.model.changestream.ChangeStreamDocument;
 @Service
 public class PromotionRedemption extends BusinessTask {
 
-    private static final String TASK_COLLECTION_NAME = "tPromotionRedemption";
+    private static final String TASK_COLLECTION_NAME = "tPromotionRedeemtion";
     private final MongoClient mongoClient;
     private final String databaseName;
     private final AwardCalculationService awardCalculationService;
@@ -62,6 +62,6 @@ public class PromotionRedemption extends BusinessTask {
             processedCount++;
         }
 
-        return processedCount;
+        return 0;
     }
 }

@@ -44,6 +44,6 @@ public class tAwards extends BusinessTask {
 
         // Store into member_awards collection
         memberAwards.insertOne(memberAward);
-        return 1; 
+        return 0; 
     }
 }
