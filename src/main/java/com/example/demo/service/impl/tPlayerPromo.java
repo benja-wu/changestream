@@ -50,6 +50,6 @@ public class tPlayerPromo extends BusinessTask {
 
         // Store into member_awards collection
         memberAwardsCollection.insertOne(memberAward);
-        return 1;
+        return 0;
     }
 }
