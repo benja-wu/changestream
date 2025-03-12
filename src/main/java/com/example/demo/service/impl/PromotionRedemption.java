@@ -4,6 +4,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 import org.bson.Document;
+import org.slf4j.LoggerFactory;
+import org.slf4j.Logger;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -18,6 +20,7 @@ import com.mongodb.client.model.changestream.ChangeStreamDocument;
 
 @Service
 public class PromotionRedemption extends BusinessTask {
+    private static final Logger LOGGER = LoggerFactory.getLogger(Task1.class);
 
     private static final String TASK_COLLECTION_NAME = "tPromotionRedeemtion";
     private final MongoClient mongoClient;
@@ -32,6 +35,7 @@ public class PromotionRedemption extends BusinessTask {
         this.mongoClient = mongoClient;
         this.awardCalculationService = awardCalculationService;
         this.databaseName = databaseName;
+        
     }
 
     @Override
@@ -62,6 +66,7 @@ public class PromotionRedemption extends BusinessTask {
             processedCount++;
         }
 
+        LOGGER.info("process related Awards {}", processedCount);
         return 0;
     }
 }

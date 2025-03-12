@@ -15,12 +15,9 @@ public class PrometheusMetricsConfig {
     private final Gauge tpsPerThread;
     private final Histogram eventProcessDuration;
     private final Histogram p99ProcessingTime;
-    private final String collectionName;
 
-    /** ✅ Private constructor: Prevents Spring from injecting */
+    /**  Private constructor: Prevents Spring from injecting */
     private PrometheusMetricsConfig(String collectionName) {
-        this.collectionName = collectionName;
-
         this.totalEventsHandled = Counter.build()
                 .name(collectionName + "_events_handled_total")
                 .help("Total events handled for " + collectionName)

@@ -17,6 +17,7 @@ public class AwardCalculationService {
 
     private final MongoClient mongoClient;
     private final String databaseName;
+    private static final Set<String> EXCLUDED_FIELDS = Set.of("_id", "CreatedDtm", "CreatedBy", "ModifiedDtm", "DataRowVersion");
 
     public AwardCalculationService(MongoClient mongoClient, @Value("${spring.mongodb.database}") String databaseName) {
         this.mongoClient = mongoClient;
@@ -33,43 +34,63 @@ public class AwardCalculationService {
         MongoCollection<Document> tPrize = database.getCollection("tPrize");
         MongoCollection<Document> tPrizeLocnMapping = database.getCollection("tPrizeLocnMapping");
         MongoCollection<Document> memberProfileCollection = database.getCollection("member_profile");
-        //MongoCollection<Document> tTranCode = database.getCollection("tTranCode");
         MongoCollection<Document> tHUBPromotionRuleOutCome = database.getCollection("tHUBPromotionRuleOutCome");
 
-        // Convert tAwards fields to snake_case
-        Document memberAward = convertToSnakeCase(tAwards);
+        // Convert tAwards fields to snake_case while filtering out unwanted fields
+        Document memberAward = convertToSnakeCase(filterFields(tAwards, Set.of("_id")));
 
-        // Populate tPlayerStub
-        Document playerStub = tPlayerStub.find(new Document("TrainId", tAwards.get("TrainId"))).first();
-        memberAward.put("player_stub", convertToSnakeCase(filterFields(playerStub, Set.of("CreatedDtm", "CreatedBy", "ModifiedDtm", "DataRowVersion"))));
-
-        // Populate tPlayerPromo
-        Document playerPromo = tPlayerPromo.find(new Document("TrainId", tAwards.get("TrainId"))).first();
-        memberAward.put("player_promo1", convertToSnakeCase(filterFields(playerPromo, Set.of("CreatedDtm", "CreatedBy", "ModifiedDtm", "DataRowVersion"))));
+        // Populate related collections
+        memberAward.put("player_stub", getFilteredAndConvertedDocument(tPlayerStub, "TrainId", tAwards.get("TrainId")));
+        memberAward.put("player_promo1", getFilteredAndConvertedDocument(tPlayerPromo, "TrainId", tAwards.get("TrainId")));
 
         // Populate tPlayerPoints
         List<Document> playerPoints = tPlayerPoints.find(new Document("TranId", tAwards.get("TranId"))).into(new java.util.ArrayList<>());
         List<Document> filteredPlayerPoints = playerPoints.stream()
-                .map(doc -> convertToSnakeCase(filterFields(doc, Set.of("CreatedDtm", "CreatedBy", "ModifiedDtm", "DataRowVersion"))))
+                .map(doc -> convertToSnakeCase(filterFields(doc, EXCLUDED_FIELDS)))
                 .collect(Collectors.toList());
         memberAward.put("player_points", filteredPlayerPoints);
 
-        // Populate tPrize (only required fields)
-        Document prize = tPrize.find(new Document("PrizeId", tAwards.get("PrizeId"))).first();
-        Document filteredPrize = convertToSnakeCase(extractFields(prize, Set.of("PrizeId", "PrizeCode", "PrizeName", "AwardCode")));
-        memberAward.put("prize", filteredPrize);
+        // Populate tPrize
+        Document prize = getFilteredAndConvertedDocument(tPrize, "PrizeId", tAwards.get("PrizeId"), Set.of("PrizeId", "PrizeCode", "PrizeName", "AwardCode"));
+        memberAward.put("prize", prize);
 
-        // Populate tPrizeLocnMapping (only required fields)
-        Document prizeLocnMapping = tPrizeLocnMapping.find(new Document("PrizeId", tAwards.get("PrizeId"))).first();
-        memberAward.put("prize_locn_mapping", convertToSnakeCase(extractFields(prizeLocnMapping, Set.of("CasinoId", "LocnId", "LocnCode"))));
+        // Populate tPrizeLocnMapping
+        memberAward.put("prize_locn_mapping", getFilteredAndConvertedDocument(tPrizeLocnMapping, "PrizeId", tAwards.get("PrizeId"), Set.of("CasinoId", "LocnId", "LocnCode")));
 
-        // Copy prize_code and prize_name into prize subdocument
-        if (filteredPrize != null) {
-            memberAward.put("prize_code", filteredPrize.get("prize_code"));
-            memberAward.put("prize_name", filteredPrize.get("prize_name"));
+
+        // PrizeType Calculation
+        int prizeType = calculatePrizeType(tAwards, tHUBPromotionRuleOutCome);
+        memberAward.put("award_prize_type", prizeType); 
+
+        // Store values in member_awards
+        boolean isDocPmprize = "P".equals(tAwards.getString("Doc"));
+        memberAward.put("is_doc_pmprize", isDocPmprize);
+        // Retrieve member_profile
+        memberAward.putAll(getMemberProfile(memberProfileCollection, tAwards.get("PlayerID")));
+
+        return memberAward;
+    }
+
+     /**
+     * Get member profile from member_profile collection, and filter out unwanted fields. 
+     */
+    private Document getMemberProfile(MongoCollection<Document> memberProfileCollection, Object playerId) {
+        Document memberAward = new Document();
+        Document memberProfile = memberProfileCollection.find(new Document("player_id", playerId)).first();
+        if (memberProfile != null) {
+            memberAward.put("member_no", memberProfile.getString("member_no"));
+            memberAward.put("member_profile", convertToSnakeCase(filterFields(extractFields(memberProfile, Set.of(
+                    "is_active_program", "club_state", "club_state_name", "primary_host_id",
+                    "secondary_host_id", "primary_host_num", "secondary_host_num",
+                    "is_banned", "is_inactive")), Set.of("_id"))));
         }
+        return memberAward;
+    }
 
-        // Optimized PrizeType Calculation, without using tTranCode collection
+    /**
+     * Determines the prize type based on tAwards and tHUBPromotionRuleOutCome.
+     */
+    private int calculatePrizeType(Document tAwards, MongoCollection<Document> tHUBPromotionRuleOutCome) {
         int prizeType = -1; // Default value
 
         // Get TranCodeID directly from tAwards
@@ -87,7 +108,7 @@ public class AwardCalculationService {
                     .map(doc -> doc.get("PID"))  // Extracting only PIDs
                     .collect(Collectors.toList());
 
-            //  Apply PrizeType conditions
+            // Apply PrizeType conditions
             if (tranCodeID == 10 || tranCodeID == 11 || tranCodeID == 12) {
                 prizeType = 2;
             } else if (tranCodeID == 4) {
@@ -96,43 +117,29 @@ public class AwardCalculationService {
                 prizeType = 4;
             }
         }
+        return prizeType;
+   }
 
-        // Store prize_type in member_awards
-        memberAward.put("prize_type", prizeType);
-        // Store values in member_awards
-        boolean isDocPmprize = "P".equals(tAwards.getString("Doc"));
-        memberAward.put("is_doc_pmprize", isDocPmprize);
-
-
-        // Retrieve member_profile where tAwards.player_id = member_profile.player_id
-        Document memberProfile = memberProfileCollection.find(new Document("player_id", tAwards.get("PlayerID"))).first();
-
-        // Extract member_no if member_profile exists
-        if (memberProfile != null) {
-            memberAward.put("member_no", memberProfile.getString("member_no"));
-
-            // Extract required fields for member_profile object
-            Document filteredMemberProfile = extractFields(memberProfile, Set.of(
-                "is_active_program",
-                "club_state",
-                "club_state_name",
-                "primary_host_id",
-                "secondary_host_id",
-                "primary_host_num",
-                "secondary_host_num",
-                "is_banned",
-                "is_inactive"
-            ));
-            
-            // Convert to snake_case and store in member_awards
-            memberAward.put("member_profile", convertToSnakeCase(filteredMemberProfile));
-        }
-
-        return memberAward;
+    /**
+     * Retrieves a document from MongoDB by a specific field, filters out unwanted fields,
+     * and converts keys to snake_case.
+     */
+    private Document getFilteredAndConvertedDocument(MongoCollection<Document> collection, String field, Object value) {
+        Document document = collection.find(new Document(field, value)).first();
+        return convertToSnakeCase(filterFields(document, EXCLUDED_FIELDS));
     }
 
     /**
-     * Filters out unwanted fields from a document.
+     * Retrieves a document with specific fields, filters out unwanted fields,
+     * and converts keys to snake_case.
+     */
+    private Document getFilteredAndConvertedDocument(MongoCollection<Document> collection, String field, Object value, Set<String> includeFields) {
+        Document document = collection.find(new Document(field, value)).first();
+        return convertToSnakeCase(filterFields(extractFields(document, includeFields), Set.of("_id")));
+    }
+
+    /**
+     * Filters out unwanted fields from a MongoDB document.
      */
     private Document filterFields(Document document, Set<String> excludeFields) {
         if (document == null) return null;
@@ -146,7 +153,7 @@ public class AwardCalculationService {
     }
 
     /**
-     * Extracts only the required fields from a document.
+     * Extracts only specific fields from a MongoDB document.
      */
     private Document extractFields(Document document, Set<String> includeFields) {
         if (document == null) return null;
@@ -160,7 +167,7 @@ public class AwardCalculationService {
     }
 
     /**
-     * Converts all field names from CamelCase to snake_case.
+     * Converts field names from CamelCase to snake_case.
      */
     private Document convertToSnakeCase(Document document) {
         if (document == null) return null;
@@ -172,12 +179,11 @@ public class AwardCalculationService {
     }
 
     /**
-     * Converts CamelCase to snake_case, ensuring proper handling of acronyms and multi-word fields.
+     * Converts a string from CamelCase to snake_case.
      */
     private String toSnakeCase(String camelCase) {
-        return camelCase
-                .replaceAll("([a-z0-9])([A-Z])", "$1_$2")  // Standard CamelCase to snake_case conversion
-                .replaceAll("([A-Z]+)([A-Z][a-z])", "$1_$2") // Ensures handling of consecutive uppercase words (acronyms)
-                .toLowerCase();
+        return camelCase.replaceAll("([a-z0-9])([A-Z])", "$1_$2")
+                        .replaceAll("([A-Z]+)([A-Z][a-z])", "$1_$2")
+                        .toLowerCase();
     }
 }
