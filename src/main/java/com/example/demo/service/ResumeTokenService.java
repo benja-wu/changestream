@@ -62,6 +62,8 @@ public class ResumeTokenService {
 
     /**
      * Retrieves the latest resume token for a specific collection.
+     * In multiple thread scenario, we choose the earliest token and resume the new round 
+     * That means the last round's event will be replayed. Need idempotent operation to handle this.
      */
     public BsonDocument getResumeToken(String collectionName) {
         LOGGER.info("🔍 in get resume token func");

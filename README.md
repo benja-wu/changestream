@@ -2,11 +2,12 @@
 Java MongoDB changestream repo based on SpringBoot framework
 
 ## Design
-1. **Resumable**. It will automatically store every resume token during business logic processing and resume changestream listener using saved token when it starts. **Note:** Since it can't be guarantee that every resume token can be stored successfully(VM crashed? network partition? ), this framework will use the earestly resume token among all threads in that last round. So multiple events(related to the number of threads) will be delivered twice(each player's events keep order). Please make sure your event processing logic is **idempotent**. You can use the user case below as a reference. 
-2. **AutoRetry**. It has configurable auto-retry logic during the event handling, for MongoDB Java driver, **Network Exceptions**, **Transient Errors**, and **Server Selection Errors** are retied autumnally by itself. Others exceptions, such as  MongoTimeoutException | MongoSocketReadException | MongoSocketWriteException | MongoCommandException | MongoWriteConcernException need to handle manually. 
-3. **Multiple Threads**. It supports multiple threads execution with configurable thread numbers. 
-4. **Extensibility**. This demo has two business logic handler in `src/main/java/com/example/demo/service/impl/task1.java` and `src/main/java/com/example/demo/service/impl/task2.java`folder, task1 implements one complicated pipeline, and task2 only display the event. Can reuse demo as example to add your new customized business logic. 
-5. **Observability**. It exposes TPS/P99 latency/Total request numbers metrics with Prometheus library and HTTP endpoint.
+1. **Resumable**. This framework will automatically store every resume token during business logic processing and resume changestream listener using saved token when it starts. **Note:** Since it can't be guarantee that every resume token can be stored successfully(VM crashed, network partition...), this framework will use the earestly resume token among all threads in that last round. So multiple events(related to the number of threads) will be delivered twice. Please ensure your event processing logic is **idempotent**. You can use the user case below as a reference. 
+2. **AutoRetry**. This framework has configurable auto-retry logic during the event handling, for MongoDB Java driver, **Network Exceptions**, **Transient Errors**, and **Server Selection Errors** are retied autumnally by itself. Others exceptions, such as  MongoTimeoutException | MongoSocketReadException | MongoSocketWriteException | MongoCommandException | MongoWriteConcernException need to handle manually. 
+3. **Concurrency event handling**. This framework supports multiple threads execution concurrencyly. As default, it create one thread for listeing collection events and use executor to handle event asychasynchronously. 
+4. **Single instance for multiple collection listening**. This framework supports listeing multiple collection and allocated dedicated thread pool for each collection.  
+5. **Extensibility**. This demo has multiple business logic handlers  in `src/main/java/com/example/demo/service/impl/` folder. Can use it as references. 
+6. **Observability**. It exposes TPS/P99 latency/Total request numbers metrics with Prometheus library and HTTP endpoint.
 
 ## User case
 In `src/main/java/com/example/demo/service/impl/task1.java`,  it watches the source collection, user's new transaction doc will be inserted as below:
@@ -107,7 +108,7 @@ db.userdailytxn.updateOne(
 
 ### Event sequence design
 1. Due to the multiple thread processing, one user's event may be consumed with different thread, that may cause the order violation for the some user's event.
-2. This framework will distributed event into the same thread by using one hash method as below:
+2. This framework is only implemented simple event.fullDocument()._id routing with hash. If u need didicated thread for single player's all events, consider to update the framework as your repquirement:
 ```java
      int playerID = fullDocument.getInteger("playerID");
      // Determine which executor to use based on playerID
