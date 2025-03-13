@@ -3,13 +3,14 @@ Java MongoDB changestream repo based on SpringBoot framework
 
 ## Design
 1. **Resumable**. This framework will automatically store every resume token during business logic processing and resume changestream listener using saved token when it starts. **Note:** Since it can't be guarantee that every resume token can be stored successfully(VM crashed, network partition...), this framework will use the earestly resume token among all threads in that last round. So multiple events(related to the number of threads) will be delivered twice. Please ensure your event processing logic is **idempotent**. You can use the user case below as a reference. 
-2. **AutoRetry**. This framework has configurable auto-retry logic during the event handling, for MongoDB Java driver, **Network Exceptions**, **Transient Errors**, and **Server Selection Errors** are retied autumnally by itself. Others exceptions, such as  MongoTimeoutException | MongoSocketReadException | MongoSocketWriteException | MongoCommandException | MongoWriteConcernException need to handle manually. 
+2. **AutoRetry**. This framework relies MongoDB Java driver for auto-retry logic during the network interruption secnarios, e.g., **Network Exceptions**, **Transient Errors**, and **Server Selection Errors**. They can be retryied by driver autumnally. Can checkout mongodb auto retry spec for other exceptions, such as  MongoTimeoutException | MongoSocketReadException | MongoSocketWriteException | MongoCommandException | MongoWriteConcernException. 
 3. **Concurrency event handling**. This framework supports multiple threads execution concurrencyly. As default, it create one thread for listeing collection events and use executor to handle event asychasynchronously. 
 4. **Single instance for multiple collection listening**. This framework supports listeing multiple collection and allocated dedicated thread pool for each collection.  
 5. **Extensibility**. This demo has multiple business logic handlers  in `src/main/java/com/example/demo/service/impl/` folder. Can use it as references. 
 6. **Observability**. It exposes TPS/P99 latency/Total request numbers metrics with Prometheus library and HTTP endpoint.
 
 ## User case
+### Case 1 update with pipeline
 In `src/main/java/com/example/demo/service/impl/task1.java`,  it watches the source collection, user's new transaction doc will be inserted as below:
 ``` bash
 {"playerID":1003,"transactionID": 100003, "name":"ben","date":ISODate(), "value":23.1})
@@ -106,18 +107,318 @@ db.userdailytxn.updateOne(
 
 ```
 
-### Event sequence design
+#### Event sequence design
 1. Due to the multiple thread processing, one user's event may be consumed with different thread, that may cause the order violation for the some user's event.
-2. This framework is only implemented simple event.fullDocument()._id routing with hash. If u need didicated thread for single player's all events, consider to update the framework as your repquirement:
-```java
-     int playerID = fullDocument.getInteger("playerID");
-     // Determine which executor to use based on playerID
-     int executorIndex = playerID % nums;
+2. This framework doesn't guarantee this event distribution consistency now. To implement it, consider using one business field for routing and change `executors` to hold single thread per executors in one collection. Then route to the dedicated executor as the business filed mod exectuor number in one collection. 
 
-     LOGGER.info("evnet {}, playerID {}, executor index {}", event, playerID, executorIndex);
-     // Submit the task to the corresponding executor
-     CompletableFuture.runAsync(() -> processEvent(event), executors[executorIndex])
+### Case 2 multiple collections merge calculation 
+
+Changestream Input
+* Existing 8 collections: tAwards, tPlayerStub, tPlayerPromo, tPlayerPoints,tHUBPromotionRedemption,  tHUBPromotionRuleOutCome, tPrizeLocnMapping, tTranCode
+ 
+Changestream triggers
+1. tAwards collection on data insert/update
+2. tPlayerStub collection on data insert/update
+3. tPlayerPromo collection on data insert/update
+4. tPlayerPoints collection on data insert/update
+5. tPromotionRedeemtion collection on data insert/update, use tPromotionRedeemtion.tPlayerID and tPromotionRedeemtion.tPrizeID to find match tAwards, and then use tAwards.tranId to find related tPlayerStub, tPlayerPromo and tPlayerPoints collection docs. 
+ 
+
+Changestream Output
+* One new collection, member_awards 
+
+
+In `src/main/java/com/example/demo/service/impl/AwardCalculationService.java`, `src/main/java/com/example/demo/service/impl/tAwards.java`,`src/main/java/com/example/demo/service/impl/tPlayerPoints.java`,`src/main/java/com/example/demo/service/impl/tPlayerPromo.java`, `src/main/java/com/example/demo/service/impl/tPlayerStub.java`, and `src/main/java/com/example/demo/service/impl/PromotionRedemption.java` files, we receive the corresponding collections' change stream event and merge all related fileds into one ouput collections, member_awards 
+
+`AwardCalculationService.java` implements the fields calculation logic, here is one final output doc sample 
+
+Sample ouput doc 
+```json
+{
+  "_id": {
+    "$oid": "67d13015cec0ee139583e534"
+  },
+  "created_dtm": {
+    "$date": "2022-09-29T07:18:44.580Z"
+  },
+  "promotion_id": null,
+  "player_session_id": 1,
+  "player_type_id": 100000001,
+  "modified_by": 777777777,
+  "tran_id": {
+    "$numberLong": "10025445779"
+  },
+  "dept_id": 100000004,
+  "trip_id": {
+    "$numberLong": "10625389"
+  },
+  "auth_emp_id": 777777777,
+  "group_id": 100000001,
+  "locn_id": 110003536,
+  "prize_qty": 1,
+  "casino_id": 110000002,
+  "gaming_dt": {
+    "$date": "2022-09-29T00:00:00.000Z"
+  },
+  "auth_award": {
+    "$numberDecimal": "99998.0000"
+  },
+  "void_tran_id": null,
+  "is_open_item": true,
+  "post_dtm": {
+    "$date": "2022-09-29T07:18:43.740Z"
+  },
+  "void_emp_id": null,
+  "_ods_is_deleted": false,
+  "game_id": 100000001,
+  "shift": 2,
+  "player_id": 777777777,
+  "created_by": 777777777,
+  "denom_id": 100000002,
+  "allowed_purge_dt": {
+    "$date": "2022-09-29T00:00:00.000Z"
+  },
+  "server_work_station": "server3",
+  "computer_name": "qa-dt012345",
+  "ref1": null,
+  "award_code": "O",
+  "ref2": "",
+  "emp_id": 777777777,
+  "aging_dt": {
+    "$date": "2022-09-29T00:00:00.000Z"
+  },
+  "item_code": "A",
+  "site_id": 533,
+  "data_row_version": 1,
+  "rep_id": {
+    "$numberLong": "0"
+  },
+  "_ods_deleted_dtm": null,
+  "_ods_replay_switch": false,
+  "prize_id": 1,
+  "outlet": null,
+  "_ods_modified_dtm": {
+    "$date": "2024-12-23T07:42:39.922Z"
+  },
+  "sequence_id": 0,
+  "_ods_created_dtm": {
+    "$date": "2024-12-23T07:42:39.922Z"
+  },
+  "award_used": {
+    "$numberDecimal": "99999.0000"
+  },
+  "related_tran_id": {
+    "$numberLong": "10025445779"
+  },
+  "tran_code_id": 8,
+  "document_no": "",
+  "old_related_tran_id": {
+    "$numberLong": "10025445779"
+  },
+  "is_distributed": false,
+  "area_id": 110000519,
+  "modified_dtm": {
+    "$date": "2022-09-29T07:18:44.580Z"
+  },
+  "flags": 0,
+  "unique_code_receiving_id": null,
+  "is_void": false,
+  "trip_type": "N",
+  "void_auth_emp_id": null,
+  "trip_dt": {
+    "$date": "2022-07-05T00:00:00.000Z"
+  },
+  "_ods_is_archived": false,
+  "player_stub": {
+    "player_id": 777777777,
+    "tran_code_id": 8,
+    "redeem_stubs": 0,
+    "expire_stubs": 0,
+    "partial_stubs": {
+      "$numberDecimal": "99999.0000"
+    },
+    "bucket_group_id": 3,
+    "modified_by": 777777777,
+    "tran_id": {
+      "$numberLong": "10025445779"
+    },
+    "partial_stubs2": {
+      "$numberDecimal": "99999.0000"
+    },
+    "base_stubs": 0,
+    "_ods_deleted_dtm": null,
+    "_ods_replay_switch": false,
+    "gaming_dt": {
+      "$date": "2024-10-22T00:00:00.000Z"
+    },
+    "adj_stubs_dr": 0,
+    "adj_stubs_cr": 1,
+    "bonus_stubs": 0,
+    "stubs_bal": 0,
+    "_ods_is_deleted": false,
+    "_ods_modified_dtm": {
+      "$date": "2025-02-28T03:03:14.358Z"
+    },
+    "_ods_created_dtm": {
+      "$date": "2025-02-28T03:03:14.358Z"
+    }
+  },
+  "player_promo1": {
+    "expiry_date": {
+      "$date": "2024-07-15T00:00:00.000Z"
+    },
+    "expire_promo1": {
+      "$numberDecimal": "99999.0000"
+    },
+    "over_promo1": {
+      "$numberDecimal": "99999.0000"
+    },
+    "bucket_group_id": 4,
+    "modified_by": 25,
+    "tran_id": {
+      "$numberLong": "10025445779"
+    },
+    "adj_promo1_dr": {
+      "$numberDecimal": "99999.0000"
+    },
+    "_ods_deleted_dtm": {
+      "$date": "2024-12-24T18:01:05.434Z"
+    },
+    "_ods_replay_switch": false,
+    "gaming_dt": {
+      "$date": "2024-07-08T00:00:00.000Z"
+    },
+    "promo1": {
+      "$numberDecimal": "99999.0000"
+    },
+    "_ods_is_deleted": true,
+    "_ods_modified_dtm": {
+      "$date": "2024-12-24T18:01:05.434Z"
+    },
+    "_ods_created_dtm": {
+      "$date": "2024-12-23T07:56:27.987Z"
+    },
+    "player_id": 777777777,
+    "adj_promo1_cr": {
+      "$numberDecimal": "99999.0000"
+    },
+    "tran_code_id": 8,
+    "promo1_used": {
+      "$numberDecimal": "0.0000"
+    },
+    "bonus_promo1": {
+      "$numberDecimal": "99999.0000"
+    },
+    "promo1_bal": {
+      "$numberDecimal": "99999.0000"
+    },
+    "_ods_is_archived": false
+  },
+  "player_points": [
+    {
+      "expiry_date": {
+        "$date": "2025-03-06T00:00:00.000Z"
+      },
+      "partial_pt2_overflow": false,
+      "partial_pt1_overflow": false,
+      "qual_pts": 0,
+      "bucket_group_id": 2,
+      "bonus_pts": 0,
+      "modified_by": 777777777,
+      "tran_id": {
+        "$numberLong": "10025445779"
+      },
+      "tran_code_id": 8,
+      "adj_pts_dr": 0,
+      "_ods_deleted_dtm": null,
+      "_ods_replay_switch": false,
+      "gaming_dt": {
+        "$date": "2024-05-21T00:00:00.000Z"
+      },
+      "base_pts": 0,
+      "_ods_is_deleted": false,
+      "_ods_modified_dtm": {
+        "$date": "2024-12-23T07:53:34.124Z"
+      },
+      "redeem_pts": 880,
+      "_ods_created_dtm": {
+        "$date": "2024-12-23T07:53:34.124Z"
+      },
+      "player_id": 777777777,
+      "pts_bal": 49362,
+      "expire_pts": 0,
+      "adj_pts_cr": 0,
+      "game_pts": 0,
+      "over_pts": 0,
+      "_ods_is_archived": false,
+      "partial_pts2": {
+        "$numberDecimal": "99999.0000"
+      },
+      "partial_pts": {
+        "$numberDecimal": "99999.0000"
+      }
+    },
+    {
+      "expiry_date": {
+        "$date": "2025-06-20T00:00:00.000Z"
+      },
+      "partial_pt2_overflow": false,
+      "partial_pt1_overflow": false,
+      "qual_pts": 100,
+      "bucket_group_id": 3,
+      "bonus_pts": 50,
+      "modified_by": 777777777,
+      "tran_id": {
+        "$numberLong": "10025445779"
+      },
+      "tran_code_id": 8,
+      "adj_pts_dr": 5,
+      "_ods_deleted_dtm": null,
+      "_ods_replay_switch": false,
+      "gaming_dt": {
+        "$date": "2024-06-15T00:00:00.000Z"
+      },
+      "base_pts": 200,
+      "_ods_is_deleted": false,
+      "_ods_modified_dtm": {
+        "$date": "2024-12-24T10:15:30.245Z"
+      },
+      "redeem_pts": 500,
+      "_ods_created_dtm": {
+        "$date": "2024-12-24T10:15:30.245Z"
+      },
+      "player_id": 777777777,
+      "pts_bal": 30500,
+      "expire_pts": 10,
+      "adj_pts_cr": 20,
+      "game_pts": 30,
+      "over_pts": 40,
+      "_ods_is_archived": false,
+      "partial_pts2": {
+        "$numberDecimal": "88888.0000"
+      },
+      "partial_pts": {
+        "$numberDecimal": "77777.0000"
+      }
+    }
+  ],
+  "prize": {
+    "award_code": "A",
+    "prize_code": "ABCDEFG",
+    "prize_name": "ABCDEFG",
+    "prize_id": 1
+  },
+  "prize_locn_mapping": {
+    "locn_id": 110001528,
+    "casino_id": 110000002,
+    "locn_code": "GLPCage"
+  },
+  "award_prize_type": -1,
+  "is_doc_pmprize": false
+}
 ```
+
+
 
 ## Observability
 1. Use Premethues libiary, expose related metris for observability 
