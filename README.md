@@ -114,21 +114,21 @@ db.userdailytxn.updateOne(
 ### Case 2 multiple collections merge calculation 
 
 Changestream Input
-* Existing 8 collections: tAwards, tPlayerStub, tPlayerPromo, tPlayerPoints,tHUBPromotionRedemption,  tHUBPromotionRuleOutCome, tPrizeLocnMapping, tTranCode
+* Existing 8 collections: Awards, Stub, Promo, Points,PromotionRedemption,  PromotionRuleOutCome, PrizeLocnMapping 
  
 Changestream triggers
-1. tAwards collection on data insert/update
-2. tPlayerStub collection on data insert/update
-3. tPlayerPromo collection on data insert/update
-4. tPlayerPoints collection on data insert/update
-5. tPromotionRedeemtion collection on data insert/update, use tPromotionRedeemtion.tPlayerID and tPromotionRedeemtion.tPrizeID to find match tAwards, and then use tAwards.tranId to find related tPlayerStub, tPlayerPromo and tPlayerPoints collection docs. 
+1. Awards collection on data insert/update
+2. PlayerStub collection on data insert/update
+3. PlayerPromo collection on data insert/update
+4. PlayerPoints collection on data insert/update
+5. PromotionRedeemtion collection on data insert/update, use PromotionRedeemtion.PlayerID and PromotionRedeemtion.PrizeID to find match Awards, and then use Awards.tranId to find related Stub, Promo and Points collection docs. 
  
 
 Changestream Output
 * One new collection, member_awards 
 
 
-In `src/main/java/com/example/demo/service/impl/AwardCalculationService.java`, `src/main/java/com/example/demo/service/impl/tAwards.java`,`src/main/java/com/example/demo/service/impl/tPlayerPoints.java`,`src/main/java/com/example/demo/service/impl/tPlayerPromo.java`, `src/main/java/com/example/demo/service/impl/tPlayerStub.java`, and `src/main/java/com/example/demo/service/impl/PromotionRedemption.java` files, we receive the corresponding collections' change stream event and merge all related fileds into one ouput collections, member_awards 
+In `src/main/java/com/example/demo/service/impl/AwardCalculationService.java`, `src/main/java/com/example/demo/service/impl/Awards.java`,`src/main/java/com/example/demo/service/impl/Points.java`,`src/main/java/com/example/demo/service/impl/Promo.java`, `src/main/java/com/example/demo/service/impl/Stub.java`, and `src/main/java/com/example/demo/service/impl/PromotionRedemption.java` files, we receive the corresponding collections' change stream event and merge all related fileds into one ouput collections, member_awards 
 
 `AwardCalculationService.java` implements the fields calculation logic, here is one final output doc sample 
 

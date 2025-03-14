@@ -14,15 +14,15 @@ import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.model.changestream.ChangeStreamDocument;
 
 @Service
-public class tPlayerStub extends BusinessTask {
+public class Points extends BusinessTask {
 
-    private static final String TASK_COLLECTION_NAME = "tPlayerStub";
+    private static final String TASK_COLLECTION_NAME = "Points";
     private final MongoClient mongoClient;
     private final String databaseName;
     private final AwardCalculationService awardCalculationService;
 
-    public tPlayerStub(ResumeTokenService resumeTokenService, TpsCalculator tpsCalculator, MongoClient mongoClient,
-                       AwardCalculationService awardCalculationService, @Value("${spring.mongodb.database}") String databaseName) {
+    public Points(ResumeTokenService resumeTokenService, TpsCalculator tpsCalculator, MongoClient mongoClient,
+                         AwardCalculationService awardCalculationService, @Value("${spring.mongodb.database}") String databaseName) {
         super(resumeTokenService, tpsCalculator,
                 PrometheusMetricsConfig.getInstance(TASK_COLLECTION_NAME),
                 TASK_COLLECTION_NAME, mongoClient);
@@ -37,21 +37,21 @@ public class tPlayerStub extends BusinessTask {
         MongoCollection<Document> tAwardsCollection = database.getCollection("tAwards");
         MongoCollection<Document> memberAwardsCollection = database.getCollection("member_awards");
 
-        Document tPlayerStub = event.getFullDocument();
-        if (tPlayerStub == null) return 0;
+        Document Points = event.getFullDocument();
+        if (Points == null) return 0;
 
         // Retrieve corresponding tAwards using TrainId
-        Document tAwards = tAwardsCollection.find(new Document("TrainId", tPlayerStub.get("TrainId"))).first();
+        Document tAwards = tAwardsCollection.find(new Document("TrainId", Points.get("TrainId"))).first();
         if (tAwards == null) return 0;
 
         // Process award calculation
         Document memberAward = awardCalculationService.calculateAward(tAwards);
         if (memberAward == null) return 0;
 
-        // Upsert into member_awards collection
-        memberAwardsCollection.updateOne(
+         // Upsert into member_awards collection
+         memberAwardsCollection.updateOne(
             new Document("TrainId", tAwards.get("TrainId")),  // Identify existing record
-            new Document("$set", memberAward),    // Update document fields
+            new Document("$set", memberAward),  // Update document fields
             new com.mongodb.client.model.UpdateOptions().upsert(true) // Enable upsert
         );
         return 0;

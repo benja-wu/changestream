@@ -25,52 +25,52 @@ public class AwardCalculationService {
     }
 
     /**
-     * Calculate member_award data based on tAwards,tPlayerStub,tPlayerPromo1,tPlayerPoints,tPrize,tPrizeLocnMapping,
-     * member_profile,tHUBPromotionRuleOutCome 
+     * Calculate member_award data based on Awards,Stub,Promo,Prize,PrizeLocnMapping,
+     * member_profile,PromotionRuleOutCome 
      */
-    public Document calculateAward(Document tAwards) {
-        if (tAwards == null) return null;
+    public Document calculateAward(Document Awards) {
+        if (Awards == null) return null;
         MongoDatabase database = mongoClient.getDatabase(databaseName);
 
-        MongoCollection<Document> tPlayerStub = database.getCollection("tPlayerStub");
-        MongoCollection<Document> tPlayerPromo = database.getCollection("tPlayerPromo1");
-        MongoCollection<Document> tPlayerPoints = database.getCollection("tPlayerPoints");
-        MongoCollection<Document> tPrize = database.getCollection("tPrize");
-        MongoCollection<Document> tPrizeLocnMapping = database.getCollection("tPrizeLocnMapping");
+        MongoCollection<Document> Stub = database.getCollection("Stub");
+        MongoCollection<Document> tPlayerPromo = database.getCollection("Promo");
+        MongoCollection<Document> tPlayerPoints = database.getCollection("Points");
+        MongoCollection<Document> tPrize = database.getCollection("Prize");
+        MongoCollection<Document> PrizeLocnMapping = database.getCollection("PrizeLocnMapping");
         MongoCollection<Document> memberProfileCollection = database.getCollection("member_profile");
-        MongoCollection<Document> tHUBPromotionRuleOutCome = database.getCollection("tHUBPromotionRuleOutCome");
+        MongoCollection<Document> PromotionRuleOutCome = database.getCollection("PromotionRuleOutCome");
 
-        // Convert tAwards fields to snake_case while filtering out unwanted fields
-        Document memberAward = convertToSnakeCase(filterFields(tAwards, Set.of("_id")));
+        // Convert Awards fields to snake_case while filtering out unwanted fields
+        Document memberAward = convertToSnakeCase(filterFields(Awards, Set.of("_id")));
 
         // Populate related collections
-        memberAward.put("player_stub", getFilteredAndConvertedDocument(tPlayerStub, "TrainId", tAwards.get("TrainId")));
-        memberAward.put("player_promo1", getFilteredAndConvertedDocument(tPlayerPromo, "TrainId", tAwards.get("TrainId")));
+        memberAward.put("player_stub", getFilteredAndConvertedDocument(Stub, "TrainId", Awards.get("TrainId")));
+        memberAward.put("player_promo1", getFilteredAndConvertedDocument(tPlayerPromo, "TrainId", Awards.get("TrainId")));
 
         // Populate tPlayerPoints
-        List<Document> playerPoints = tPlayerPoints.find(new Document("TranId", tAwards.get("TranId"))).into(new java.util.ArrayList<>());
+        List<Document> playerPoints = tPlayerPoints.find(new Document("TranId", Awards.get("TranId"))).into(new java.util.ArrayList<>());
         List<Document> filteredPlayerPoints = playerPoints.stream()
                 .map(doc -> convertToSnakeCase(filterFields(doc, EXCLUDED_FIELDS)))
                 .collect(Collectors.toList());
         memberAward.put("player_points", filteredPlayerPoints);
 
         // Populate tPrize
-        Document prize = getFilteredAndConvertedDocument(tPrize, "PrizeId", tAwards.get("PrizeId"), Set.of("PrizeId", "PrizeCode", "PrizeName", "AwardCode"));
+        Document prize = getFilteredAndConvertedDocument(tPrize, "PrizeId", Awards.get("PrizeId"), Set.of("PrizeId", "PrizeCode", "PrizeName", "AwardCode"));
         memberAward.put("prize", prize);
 
-        // Populate tPrizeLocnMapping
-        memberAward.put("prize_locn_mapping", getFilteredAndConvertedDocument(tPrizeLocnMapping, "PrizeId", tAwards.get("PrizeId"), Set.of("CasinoId", "LocnId", "LocnCode")));
+        // Populate PrizeLocnMapping
+        memberAward.put("prize_locn_mapping", getFilteredAndConvertedDocument(PrizeLocnMapping, "PrizeId", Awards.get("PrizeId"), Set.of("CasinoId", "LocnId", "LocnCode")));
 
 
         // PrizeType Calculation
-        int prizeType = calculatePrizeType(tAwards, tHUBPromotionRuleOutCome);
+        int prizeType = calculatePrizeType(Awards, PromotionRuleOutCome);
         memberAward.put("award_prize_type", prizeType); 
 
         // Store values in member_awards
-        boolean isDocPmprize = "P".equals(tAwards.getString("Doc"));
+        boolean isDocPmprize = "P".equals(Awards.getString("Doc"));
         memberAward.put("is_doc_pmprize", isDocPmprize);
         // Retrieve member_profile
-        memberAward.putAll(getMemberProfile(memberProfileCollection, tAwards.get("PlayerID")));
+        memberAward.putAll(getMemberProfile(memberProfileCollection, Awards.get("PlayerID")));
 
         return memberAward;
     }
@@ -92,21 +92,21 @@ public class AwardCalculationService {
     }
 
     /**
-     * Determines the prize type based on tAwards and tHUBPromotionRuleOutCome.
+     * Determines the prize type based on Awards and PromotionRuleOutCome.
      */
-    private int calculatePrizeType(Document tAwards, MongoCollection<Document> tHUBPromotionRuleOutCome) {
+    private int calculatePrizeType(Document Awards, MongoCollection<Document> PromotionRuleOutCome) {
         int prizeType = -1; // Default value
 
-        // Get TranCodeID directly from tAwards
-        int tranCodeID = tAwards.getInteger("TranCodeID", -1);
+        // Get TranCodeID directly from Awards
+        int tranCodeID = Awards.getInteger("TranCodeID", -1);
 
-        // Retrieve targetRID from tHUBPromotionRuleOutCome where PlayerID = tAwards.PlayerID
-        Document hub = tHUBPromotionRuleOutCome.find(new Document("PlayerID", tAwards.get("PlayerID"))).first();
+        // Retrieve targetRID from PromotionRuleOutCome where PlayerID = Awards.PlayerID
+        Document hub = PromotionRuleOutCome.find(new Document("PlayerID", Awards.get("PlayerID"))).first();
         if (hub != null) {
             Object targetRID = hub.get("RID");
 
             // Find all PIDs where RID = targetRID
-            List<Document> pidArray = tHUBPromotionRuleOutCome.find(new Document("RID", targetRID))
+            List<Document> pidArray = PromotionRuleOutCome.find(new Document("RID", targetRID))
                     .into(new java.util.ArrayList<>());
             List<Object> pidValues = pidArray.stream()
                     .map(doc -> doc.get("PID"))  // Extracting only PIDs
@@ -117,7 +117,7 @@ public class AwardCalculationService {
                 prizeType = 2;
             } else if (tranCodeID == 4) {
                 prizeType = 3;
-            } else if (tAwards.containsKey("RID") && pidValues.contains(tAwards.get("RID"))) {
+            } else if (Awards.containsKey("RID") && pidValues.contains(Awards.get("RID"))) {
                 prizeType = 4;
             }
         }

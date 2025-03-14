@@ -45,13 +45,13 @@ class AwardCalculationServiceTest {
         MockitoAnnotations.openMocks(this);
         awardCalculationService = new AwardCalculationService(mongoClient, "testDatabase"); // Inject database name
         when(mongoClient.getDatabase(anyString())).thenReturn(mongoDatabase);
-        when(mongoDatabase.getCollection("tPlayerStub")).thenReturn(tPlayerStubCollection);
-        when(mongoDatabase.getCollection("tPlayerPromo1")).thenReturn(tPlayerPromoCollection);
-        when(mongoDatabase.getCollection("tPlayerPoints")).thenReturn(tPlayerPointsCollection);
-        when(mongoDatabase.getCollection("tPrize")).thenReturn(tPrizeCollection);
-        when(mongoDatabase.getCollection("tPrizeLocnMapping")).thenReturn(tPrizeLocnMappingCollection);
+        when(mongoDatabase.getCollection("Stub")).thenReturn(tPlayerStubCollection);
+        when(mongoDatabase.getCollection("Promo")).thenReturn(tPlayerPromoCollection);
+        when(mongoDatabase.getCollection("Points")).thenReturn(tPlayerPointsCollection);
+        when(mongoDatabase.getCollection("Prize")).thenReturn(tPrizeCollection);
+        when(mongoDatabase.getCollection("PrizeLocnMapping")).thenReturn(tPrizeLocnMappingCollection);
         when(mongoDatabase.getCollection("member_profile")).thenReturn(memberProfileCollection);
-        when(mongoDatabase.getCollection("tHUBPromotionRuleOutCome")).thenReturn(tHUBPromotionRuleOutComeCollection);
+        when(mongoDatabase.getCollection("PromotionRuleOutCome")).thenReturn(tHUBPromotionRuleOutComeCollection);
     }
 
     @Test
