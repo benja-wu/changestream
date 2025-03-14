@@ -26,6 +26,8 @@ import jakarta.annotation.PostConstruct;
 @Service
 @DependsOn("collectionMap")
 public class EventProcessingMediator {
+    private static final int MAX_RETRIES = 5;
+    private static final long RETRY_DELAY_MS = 1000; // 1 second
     private static final Logger LOGGER = LoggerFactory.getLogger(EventProcessingMediator.class);
     
     // Maps collection names to their respective BusinessTask implementations
@@ -93,42 +95,85 @@ public class EventProcessingMediator {
         LOGGER.info("Started all change stream listeners.");
     }
 
-    // Listens for changes on a specific collection and submits tasks for processing
+    /**
+     * Listens for changes on a specific collection and submits tasks for processing
+     * with max retry attempts. 
+     * */ 
     private void listenForChanges(String collectionName) {
-        BusinessTask task = tasks.get(collectionName);
-        if (task == null) {
-            LOGGER.warn("No task for collection: {}", collectionName);
-            return;
-        }
-
-        // Retrieve the resume token to resume from the last known position in the change stream
-        BsonDocument resumeToken = task.resumeTokenService != null ?
-            task.resumeTokenService.getResumeToken(collectionName) : null;
-        LOGGER.info("Starting change stream for {} with resume token: {}", collectionName, resumeToken);
-
-        // Process each event from the change stream
-        task.changeStreamIterator(resumeToken).forEach(event -> {
-            Document fullDocument = event.getFullDocument();
-            if (fullDocument == null || !fullDocument.containsKey("_id")) {
-                LOGGER.error("Ensure using MongoDB 6.0 above, event missing _id in fullDocument: {}", event);
+        int retryCount = 0;
+    
+        // Continue attempting to listen until max retries are reached
+        while (retryCount < MAX_RETRIES) {
+            BusinessTask task = tasks.get(collectionName);
+            if (task == null) {
+                LOGGER.warn("No task for collection: {}", collectionName);
                 return;
             }
-
-            // Submit the event to the executor for processing asynchronously
-            ExecutorService executorService = executorServicesMap.get(collectionName);
-            executorService.submit(() -> {
-                try {
-                    LOGGER.info("🔄 Processing event on thread: {} for collection: {}", 
-                    Thread.currentThread().getName(), collectionName);
-                    // Introduce a sleep to simulate processing time (e.g., 3 seconds)
-                    // Thread.sleep(3000);
-                    task.startProcessing(Thread.currentThread().getName(), event);
-                } catch (Exception e) {
-                    LOGGER.error("Failed to process event {} {}", event, e);
+    
+            // Retrieve the resume token for restarting the change stream
+            BsonDocument resumeToken = task.resumeTokenService != null ?
+                task.resumeTokenService.getResumeToken(collectionName) : null;
+            LOGGER.info("Starting change stream for {} with resume token: {}", collectionName, resumeToken);
+    
+            try {
+                // Start the change stream and process events
+                task.changeStreamIterator(resumeToken).forEach(event -> {
+                    // Handle invalidation event
+                    if ("invalidate".equals(event.getOperationType())) {
+                        LOGGER.info("Change stream invalidated for {}. Will attempt to restart.", collectionName);
+                        throw new RuntimeException("Invalidated"); // Break the iterator to trigger a retry
+                    }
+    
+                    // Validate the event's fullDocument
+                    Document fullDocument = event.getFullDocument();
+                    if (fullDocument == null || !fullDocument.containsKey("_id")) {
+                        LOGGER.error("Event missing _id in fullDocument: {}", event);
+                        return; // Skip this event
+                    }
+    
+                    // Submit event processing to the executor service
+                    ExecutorService executorService = executorServicesMap.get(collectionName);
+                    executorService.submit(() -> {
+                        try {
+                            LOGGER.info("🔄 Processing event on thread: {} for collection: {}", 
+                                Thread.currentThread().getName(), collectionName);
+                            task.startProcessing(Thread.currentThread().getName(), event);
+                        } catch (Exception e) {
+                            LOGGER.error("Failed to process event {} {}", event, e);
+                        }
+                    });
+                });
+    
+                // If the forEach loop exits normally, it’s unexpected for a change stream
+                LOGGER.warn("Change stream closed normally for {}. Retrying...", collectionName);
+                retryCount++;
+    
+            } catch (Exception e) {
+                // Handle specific invalidation case
+                if (e.getMessage().equals("Invalidated")) {
+                    LOGGER.info("Change stream invalidated. Retrying...");
+                } else {
+                    // Log other unexpected errors
+                    LOGGER.error("Error in change stream for {}: {}", collectionName, e.getMessage(), e);
                 }
-            });
-            LOGGER.info("Submitted event to thread pool for collection: {}", collectionName);
-        });
+    
+                // Increment retry count and add delay before next attempt
+                retryCount++;
+                if (retryCount < MAX_RETRIES) {
+                    try {
+                        Thread.sleep(RETRY_DELAY_MS); // Delay to avoid rapid retries
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        LOGGER.error("Interrupted during retry delay", ie);
+                        return;
+                    }
+                }
+            }
+        }
+    
+        // Log failure and stop if max retries are exhausted
+        LOGGER.error("Max retries reached for collection {}. Stopping listener.", collectionName);
+        // Optional: Add further action here, e.g., notify an admin or trigger a shutdown
     }
 
     // Gracefully shuts down the executor services for all collections

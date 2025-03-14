@@ -4,8 +4,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 import org.bson.Document;
-import org.slf4j.LoggerFactory;
 import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -61,8 +61,12 @@ public class PromotionRedemption extends BusinessTask {
             // Process award calculation
             Document memberAward = awardCalculationService.calculateAward(tAwards);
             if (memberAward == null) continue;
-            // Store into member_awards collection
-            memberAwardsCollection.insertOne(memberAward);
+                // Upsert into member_awards collection
+                memberAwardsCollection.updateOne(
+                    new Document("TrainId", tAwards.get("TrainId")),  // Identify existing record
+                    new Document("$set", memberAward),  // Update document fields
+                    new com.mongodb.client.model.UpdateOptions().upsert(true) // Enable upsert
+                ); 
             processedCount++;
         }
 

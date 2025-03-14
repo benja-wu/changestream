@@ -24,6 +24,10 @@ public class AwardCalculationService {
         this.databaseName = databaseName;
     }
 
+    /**
+     * Calculate member_award data based on tAwards,tPlayerStub,tPlayerPromo1,tPlayerPoints,tPrize,tPrizeLocnMapping,
+     * member_profile,tHUBPromotionRuleOutCome 
+     */
     public Document calculateAward(Document tAwards) {
         if (tAwards == null) return null;
         MongoDatabase database = mongoClient.getDatabase(databaseName);
@@ -121,7 +125,7 @@ public class AwardCalculationService {
    }
 
     /**
-     * Retrieves a document from MongoDB by a specific field, filters out unwanted fields,
+     * Retrieves a document by a specific field, filters out unwanted fields,
      * and converts keys to snake_case.
      */
     private Document getFilteredAndConvertedDocument(MongoCollection<Document> collection, String field, Object value) {
@@ -130,7 +134,7 @@ public class AwardCalculationService {
     }
 
     /**
-     * Retrieves a document with specific fields, filters out unwanted fields,
+     * Retrieves a document with specific fields, filters only wanted fields,
      * and converts keys to snake_case.
      */
     private Document getFilteredAndConvertedDocument(MongoCollection<Document> collection, String field, Object value, Set<String> includeFields) {

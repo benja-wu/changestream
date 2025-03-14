@@ -42,8 +42,12 @@ public class tAwards extends BusinessTask {
         Document memberAward = awardCalculationService.calculateAward(tAwards);
         if (memberAward == null) return 0;
 
-        // Store into member_awards collection
-        memberAwards.insertOne(memberAward);
+        // Upsert into member_awards collection
+        memberAwards.updateOne(
+            new Document("TrainId", tAwards.get("TrainId")),  // Identify existing record
+            new Document("$set", memberAward),  // Update document fields
+            new com.mongodb.client.model.UpdateOptions().upsert(true) // Enable upsert
+        );
         return 0; 
     }
 }
