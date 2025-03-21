@@ -1,5 +1,7 @@
 package com.example.demo.service.impl;
 
+import java.util.Date;
+
 import org.bson.Document;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -14,15 +16,15 @@ import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.model.changestream.ChangeStreamDocument;
 
 @Service
-public class tAwards extends BusinessTask {
-    
-    private static final String TASK_COLLECTION_NAME = "tAwards";
+public class hub_tPlayerStub extends BusinessTask {
+
+    private static final String TASK_COLLECTION_NAME = "hub_tPlayerStub";
     private final MongoClient mongoClient;
     private final String databaseName;
     private final AwardCalculationService awardCalculationService;
 
-    public tAwards(ResumeTokenService resumeTokenService, TpsCalculator tpsCalculator, MongoClient mongoClient,
-                   AwardCalculationService awardCalculationService, @Value("${spring.mongodb.database}") String databaseName) {
+    public hub_tPlayerStub(ResumeTokenService resumeTokenService, TpsCalculator tpsCalculator, MongoClient mongoClient,
+                       AwardCalculationService awardCalculationService, @Value("${spring.mongodb.database}") String databaseName) {
         super(resumeTokenService, tpsCalculator,
                 PrometheusMetricsConfig.getInstance(TASK_COLLECTION_NAME),
                 TASK_COLLECTION_NAME, mongoClient);
@@ -30,22 +32,30 @@ public class tAwards extends BusinessTask {
         this.awardCalculationService = awardCalculationService;
         this.databaseName = databaseName;
     }
+
     @Override
     public int processChange(ChangeStreamDocument<Document> event) {
         MongoDatabase database = mongoClient.getDatabase(databaseName);
-        MongoCollection<Document> memberAwards = database.getCollection("member_awards");
+        MongoCollection<Document> tAwardsCollection = database.getCollection("tAwards");
+        MongoCollection<Document> memberAwardsCollection = database.getCollection("member_awards");
 
-        Document tAwards = event.getFullDocument();
+        Document tPlayerStub = event.getFullDocument();
+        if (tPlayerStub == null) return 0;
+
+        // Retrieve corresponding tAwards using TrainId
+        Document tAwards = tAwardsCollection.find(new Document("TrainId", tPlayerStub.get("TrainId"))).first();
         if (tAwards == null) return 0;
+
+        Document query = new Document("tran_id", tAwards.get("TranId")).append("_ODS_schema", AwardCalculationService.ODS_SCHEMA_VERSION);
 
         // Calculate the award data
         Document memberAward = awardCalculationService.calculateAward(tAwards);
         if (memberAward == null) return 0;
 
         // Upsert into member_awards collection
-        memberAwards.updateOne(
-            new Document("TrainId", tAwards.get("TrainId")),  // Identify existing record
-            new Document("$set", memberAward),  // Update document fields
+        memberAwardsCollection.updateOne(
+            query,
+            new Document("$set", memberAward).append("$setOnInsert", new Document("_ODS_created_dtm", new Date())),  // Update document fields
             new com.mongodb.client.model.UpdateOptions().upsert(true) // Enable upsert
         );
         return 0; 

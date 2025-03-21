@@ -5,7 +5,6 @@ import java.util.Arrays;
 import java.util.List;
 
 import org.bson.Document;
-import org.bson.conversions.Bson;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -37,141 +36,93 @@ class AwardCalculationServiceTest {
     @Mock private MongoCollection<Document> tPrizeLocnMappingCollection;
     @Mock private MongoCollection<Document> memberProfileCollection;
     @Mock private MongoCollection<Document> tHUBPromotionRuleOutComeCollection;
+    @Mock private MongoCollection<Document> tTranCodeCollection;
 
     @InjectMocks private AwardCalculationService awardCalculationService;
 
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
-        awardCalculationService = new AwardCalculationService(mongoClient, "testDatabase"); // Inject database name
+        awardCalculationService = new AwardCalculationService(mongoClient, "testDatabase");
         when(mongoClient.getDatabase(anyString())).thenReturn(mongoDatabase);
-        when(mongoDatabase.getCollection("tPlayerStub")).thenReturn(tPlayerStubCollection);
-        when(mongoDatabase.getCollection("tPlayerPromo1")).thenReturn(tPlayerPromoCollection);
-        when(mongoDatabase.getCollection("tPlayerPoints")).thenReturn(tPlayerPointsCollection);
-        when(mongoDatabase.getCollection("tPrize")).thenReturn(tPrizeCollection);
-        when(mongoDatabase.getCollection("tPrizeLocnMapping")).thenReturn(tPrizeLocnMappingCollection);
+        when(mongoDatabase.getCollection("hub_tPlayerStub")).thenReturn(tPlayerStubCollection);
+        when(mongoDatabase.getCollection("hub_tPlayerPromo")).thenReturn(tPlayerPromoCollection);
+        when(mongoDatabase.getCollection("hub_tPlayerPoints")).thenReturn(tPlayerPointsCollection);
+        when(mongoDatabase.getCollection("hub_tPrize")).thenReturn(tPrizeCollection);
+        when(mongoDatabase.getCollection("hub_tPrizeLocnMapping")).thenReturn(tPrizeLocnMappingCollection);
         when(mongoDatabase.getCollection("member_profile")).thenReturn(memberProfileCollection);
-        when(mongoDatabase.getCollection("tHUBPromotionRuleOutCome")).thenReturn(tHUBPromotionRuleOutComeCollection);
+        when(mongoDatabase.getCollection("hub_tHUBPromotionRuleOutCome")).thenReturn(tHUBPromotionRuleOutComeCollection);
+        when(mongoDatabase.getCollection("hub_tTranCode")).thenReturn(tTranCodeCollection);
     }
 
     @Test
     void testCalculateAward() {
-        // Mock input document (tAwards)
         Document tAwards = new Document("TrainId", "TR123456")
                 .append("TranId", "10002877609")
                 .append("PrizeId", 1210017247)
-                .append("PlayerID", 777777777)
-                .append("TranCodeID", 10) // Changed to 10 to match prize_type = 2 logic
+                .append("PlayerId", 777777777) // Match PlayerId as used in calculatePrizeType
+                .append("TranCodeId", 10)
                 .append("Doc", "P");
-    
-        // Set up mock FindIterable for each collection individually
-    
-        // tPlayerStubCollection
-        Document stubDoc = new Document("TrainId", "TR123456").append("StubValue", 10);
-        FindIterable<Document> stubIterable = mock(FindIterable.class);
-        when(stubIterable.first()).thenReturn(stubDoc);
-        when(tPlayerStubCollection.find(any(Bson.class))).thenReturn(stubIterable);
-    
-        // tPlayerPromoCollection
-        Document promoDoc = new Document("TrainId", "TR123456").append("PromoValue", 20);
-        FindIterable<Document> promoIterable = mock(FindIterable.class);
-        when(promoIterable.first()).thenReturn(promoDoc);
-        when(tPlayerPromoCollection.find(any(Bson.class))).thenReturn(promoIterable);
-    
-        // tPlayerPointsCollection (uses .into(), so set up iterator)
-        List<Document> pointsDocs = Arrays.asList(
+
+        // Mock all collections
+        mockSingleDoc(tPlayerStubCollection, "TrainId", "TR123456", new Document("TrainId", "TR123456").append("StubValue", 10));
+        mockSingleDoc(tPlayerPromoCollection, "TrainId", "TR123456", new Document("TrainId", "TR123456").append("PromoValue", 20));
+        mockListDocs(tPlayerPointsCollection, "TranId", "10002877609", Arrays.asList(
                 new Document("TranId", "10002877609").append("Pts", 50),
                 new Document("TranId", "10002877609").append("Pts", 30)
-        );
-        FindIterable<Document> pointsIterable = mock(FindIterable.class);
-        MongoCursor<Document> pointsCursor = mock(MongoCursor.class);
-        when(pointsIterable.iterator()).thenReturn(pointsCursor);
-        when(pointsCursor.hasNext()).thenReturn(true, true, false); // Two documents, then done
-        when(pointsCursor.next()).thenReturn(pointsDocs.get(0), pointsDocs.get(1));
-        when(tPlayerPointsCollection.find(any(Bson.class))).thenReturn(pointsIterable);
-    
-        // tPrizeCollection
-        Document prizeDoc = new Document("PrizeId", 1210017247)
+        ));
+        mockSingleDoc(tPrizeCollection, "PrizeId", 1210017247, new Document("PrizeId", 1210017247)
                 .append("PrizeCode", "ABCDEFG")
-                .append("PrizeName", "Test Prize");
-        FindIterable<Document> prizeIterable = mock(FindIterable.class);
-        when(prizeIterable.first()).thenReturn(prizeDoc);
-        when(tPrizeCollection.find(any(Bson.class))).thenReturn(prizeIterable);
-    
-        // tPrizeLocnMappingCollection
-        Document locnDoc = new Document("PrizeId", 1210017247).append("CasinoId", 110000002);
-        FindIterable<Document> locnIterable = mock(FindIterable.class);
-        when(locnIterable.first()).thenReturn(locnDoc);
-        when(tPrizeLocnMappingCollection.find(any(Bson.class))).thenReturn(locnIterable);
-    
-        // memberProfileCollection
-        Document memberDoc = new Document("player_id", 777777777).append("member_no", "888888888");
-        FindIterable<Document> memberIterable = mock(FindIterable.class);
-        when(memberIterable.first()).thenReturn(memberDoc);
-        when(memberProfileCollection.find(any(Bson.class))).thenReturn(memberIterable);
-    
-        // tHUBPromotionRuleOutComeCollection (handles two finds: PlayerID and RID)
-        // First find: PlayerID = 777777777
-        Document hubDoc = new Document("PlayerID", 777777777).append("RID", "RID12345");
-        FindIterable<Document> hubIterable1 = mock(FindIterable.class);
-        when(hubIterable1.first()).thenReturn(hubDoc);
-        // Second find: RID = "RID12345" (simplified for test; adjust if PIDs are needed)
-        FindIterable<Document> hubIterable2 = mock(FindIterable.class);
-        when(hubIterable2.iterator()).thenReturn(mock(MongoCursor.class)); // Empty iterator for simplicity
-        // Return different iterables for consecutive calls
-        when(tHUBPromotionRuleOutComeCollection.find(any(Bson.class)))
-                .thenReturn(hubIterable1) // First call (PlayerID)
-                .thenReturn(hubIterable2); // Second call (RID)
-    
-        // Execute function
+                .append("PrizeName", "Test Prize"));
+        mockSingleDoc(tPrizeLocnMappingCollection, "PrizeId", 1210017247, new Document("PrizeId", 1210017247).append("CasinoId", 110000002));
+        mockSingleDoc(memberProfileCollection, "player_id", 777777777, new Document("player_id", 777777777).append("member_no", "888888888"));
+        mockSingleDoc(tTranCodeCollection, "TranCodeId", 10, new Document("TranCodeId", 10)
+                .append("TranCode", "TC001")
+                .append("TranName", "Transaction Name")
+                .append("TranType", "TypeA")
+                .append("ItemCode", "IC001"));
+        mockSingleDoc(tHUBPromotionRuleOutComeCollection, "PlayerID", 777777777, new Document("PlayerID", 777777777).append("RID", "RID12345"));
+        mockListDocs(tHUBPromotionRuleOutComeCollection, "RID", "RID12345", Arrays.asList());
+
         Document result = awardCalculationService.calculateAward(tAwards);
-    
-        // Assertions
+
         assertNotNull(result);
         assertEquals("TR123456", result.getString("train_id"));
         assertEquals("10002877609", result.getString("tran_id"));
-        assertEquals(2, result.getInteger("award_prize_type")); // Matches TranCodeID = 10 logic
-        //assertEquals("ABCDEFG", result.getString("prize_code"));
-        //assertEquals("Test Prize", result.getString("prize_name"));
+        assertEquals(2, result.getInteger("award_prize_type"));
         assertEquals(true, result.getBoolean("is_doc_pmprize"));
         assertEquals("888888888", result.getString("member_no"));
         assertTrue(result.containsKey("player_stub"));
-        assertTrue(result.containsKey("player_promo1"));
+        assertTrue(result.containsKey("player_promo"));
         assertTrue(result.containsKey("player_points"));
         assertTrue(result.containsKey("prize_locn_mapping"));
-    } 
+        Document tranCodeResult = (Document) result.get("tran_code");
+        assertNotNull(tranCodeResult);
+        assertEquals(10, tranCodeResult.getInteger("tran_code_id"));
+    }
 
     @Test
     void testCalculateAwardPrizeTypeTranCode11() {
-        // Mock tAwards
         Document tAwards = new Document("TrainId", "TR123456")
                 .append("TranId", "10002877609")
                 .append("PrizeId", 1210017247)
-                .append("PlayerID", 777777777)
-                .append("TranCodeID", 11)
+                .append("PlayerId", 777777777) // Match PlayerId
+                .append("TranCodeId", 11)
                 .append("Doc", "P");
 
-        // Mock tHUBPromotionRuleOutComeCollection
-        Document hubDoc = new Document("PlayerID", 777777777).append("RID", "RID12345");
-        FindIterable<Document> hubIterable = mock(FindIterable.class);
-        when(hubIterable.first()).thenReturn(hubDoc);
-        FindIterable<Document> pidIterable = mock(FindIterable.class);
-        when(pidIterable.into(any())).thenReturn(Arrays.asList());
-        when(tHUBPromotionRuleOutComeCollection.find(new Document("PlayerID", 777777777))).thenReturn(hubIterable);
-        when(tHUBPromotionRuleOutComeCollection.find(new Document("RID", "RID12345"))).thenReturn(pidIterable);
+        // Mock all collections
+        mockSingleDoc(tPlayerStubCollection, "TrainId", "TR123456", new Document("TrainId", "TR123456"));
+        mockSingleDoc(tPlayerPromoCollection, "TrainId", "TR123456", new Document("TrainId", "TR123456"));
+        mockListDocs(tPlayerPointsCollection, "TranId", "10002877609", Arrays.asList(new Document("TranId", "10002877609")));
+        mockSingleDoc(tPrizeCollection, "PrizeId", 1210017247, new Document("PrizeId", 1210017247));
+        mockSingleDoc(tPrizeLocnMappingCollection, "PrizeId", 1210017247, new Document("PrizeId", 1210017247));
+        mockSingleDoc(memberProfileCollection, "player_id", 777777777, new Document("player_id", 777777777).append("member_no", "M123"));
+        mockSingleDoc(tTranCodeCollection, "TranCodeId", 11, new Document("TranCodeId", 11));
+        mockSingleDoc(tHUBPromotionRuleOutComeCollection, "PlayerID", 777777777, new Document("PlayerID", 777777777).append("RID", "RID12345"));
+        mockListDocs(tHUBPromotionRuleOutComeCollection, "RID", "RID12345", Arrays.asList());
 
-        // Minimal mocks for other collections
-        mockCollection(tPlayerStubCollection, "TrainId", "TR123456");
-        mockCollection(tPlayerPromoCollection, "TrainId", "TR123456");
-        mockCollection(tPlayerPointsCollection, "TranId", "10002877609", true);
-        mockCollection(tPrizeCollection, "PrizeId", 1210017247);
-        mockCollection(tPrizeLocnMappingCollection, "PrizeId", 1210017247);
-        mockCollection(memberProfileCollection, "player_id", 777777777);
-
-        // Execute
         Document result = awardCalculationService.calculateAward(tAwards);
 
-        // Assert
         assertNotNull(result);
         assertEquals(2, result.getInteger("award_prize_type"));
     }
@@ -181,24 +132,20 @@ class AwardCalculationServiceTest {
         Document tAwards = new Document("TrainId", "TR123456")
                 .append("TranId", "10002877609")
                 .append("PrizeId", 1210017247)
-                .append("PlayerID", 777777777)
-                .append("TranCodeID", 12)
+                .append("PlayerId", 777777777) // Match PlayerId
+                .append("TranCodeId", 12)
                 .append("Doc", "P");
 
-        Document hubDoc = new Document("PlayerID", 777777777).append("RID", "RID12345");
-        FindIterable<Document> hubIterable = mock(FindIterable.class);
-        when(hubIterable.first()).thenReturn(hubDoc);
-        FindIterable<Document> pidIterable = mock(FindIterable.class);
-        when(pidIterable.into(any())).thenReturn(Arrays.asList());
-        when(tHUBPromotionRuleOutComeCollection.find(new Document("PlayerID", 777777777))).thenReturn(hubIterable);
-        when(tHUBPromotionRuleOutComeCollection.find(new Document("RID", "RID12345"))).thenReturn(pidIterable);
-
-        mockCollection(tPlayerStubCollection, "TrainId", "TR123456");
-        mockCollection(tPlayerPromoCollection, "TrainId", "TR123456");
-        mockCollection(tPlayerPointsCollection, "TranId", "10002877609", true);
-        mockCollection(tPrizeCollection, "PrizeId", 1210017247);
-        mockCollection(tPrizeLocnMappingCollection, "PrizeId", 1210017247);
-        mockCollection(memberProfileCollection, "player_id", 777777777);
+        // Mock all collections
+        mockSingleDoc(tPlayerStubCollection, "TrainId", "TR123456", new Document("TrainId", "TR123456"));
+        mockSingleDoc(tPlayerPromoCollection, "TrainId", "TR123456", new Document("TrainId", "TR123456"));
+        mockListDocs(tPlayerPointsCollection, "TranId", "10002877609", Arrays.asList(new Document("TranId", "10002877609")));
+        mockSingleDoc(tPrizeCollection, "PrizeId", 1210017247, new Document("PrizeId", 1210017247));
+        mockSingleDoc(tPrizeLocnMappingCollection, "PrizeId", 1210017247, new Document("PrizeId", 1210017247));
+        mockSingleDoc(memberProfileCollection, "player_id", 777777777, new Document("player_id", 777777777).append("member_no", "M123"));
+        mockSingleDoc(tTranCodeCollection, "TranCodeId", 12, new Document("TranCodeId", 12));
+        mockSingleDoc(tHUBPromotionRuleOutComeCollection, "PlayerID", 777777777, new Document("PlayerID", 777777777).append("RID", "RID12345"));
+        mockListDocs(tHUBPromotionRuleOutComeCollection, "RID", "RID12345", Arrays.asList());
 
         Document result = awardCalculationService.calculateAward(tAwards);
 
@@ -211,24 +158,20 @@ class AwardCalculationServiceTest {
         Document tAwards = new Document("TrainId", "TR123456")
                 .append("TranId", "10002877609")
                 .append("PrizeId", 1210017247)
-                .append("PlayerID", 777777777)
-                .append("TranCodeID", 4)
+                .append("PlayerId", 777777777) // Match PlayerId
+                .append("TranCodeId", 4)
                 .append("Doc", "P");
 
-        Document hubDoc = new Document("PlayerID", 777777777).append("RID", "RID12345");
-        FindIterable<Document> hubIterable = mock(FindIterable.class);
-        when(hubIterable.first()).thenReturn(hubDoc);
-        FindIterable<Document> pidIterable = mock(FindIterable.class);
-        when(pidIterable.into(any())).thenReturn(Arrays.asList());
-        when(tHUBPromotionRuleOutComeCollection.find(new Document("PlayerID", 777777777))).thenReturn(hubIterable);
-        when(tHUBPromotionRuleOutComeCollection.find(new Document("RID", "RID12345"))).thenReturn(pidIterable);
-
-        mockCollection(tPlayerStubCollection, "TrainId", "TR123456");
-        mockCollection(tPlayerPromoCollection, "TrainId", "TR123456");
-        mockCollection(tPlayerPointsCollection, "TranId", "10002877609", true);
-        mockCollection(tPrizeCollection, "PrizeId", 1210017247);
-        mockCollection(tPrizeLocnMappingCollection, "PrizeId", 1210017247);
-        mockCollection(memberProfileCollection, "player_id", 777777777);
+        // Mock all collections
+        mockSingleDoc(tPlayerStubCollection, "TrainId", "TR123456", new Document("TrainId", "TR123456"));
+        mockSingleDoc(tPlayerPromoCollection, "TrainId", "TR123456", new Document("TrainId", "TR123456"));
+        mockListDocs(tPlayerPointsCollection, "TranId", "10002877609", Arrays.asList(new Document("TranId", "10002877609")));
+        mockSingleDoc(tPrizeCollection, "PrizeId", 1210017247, new Document("PrizeId", 1210017247));
+        mockSingleDoc(tPrizeLocnMappingCollection, "PrizeId", 1210017247, new Document("PrizeId", 1210017247));
+        mockSingleDoc(memberProfileCollection, "player_id", 777777777, new Document("player_id", 777777777).append("member_no", "M123"));
+        mockSingleDoc(tTranCodeCollection, "TranCodeId", 4, new Document("TranCodeId", 4));
+        mockSingleDoc(tHUBPromotionRuleOutComeCollection, "PlayerID", 777777777, new Document("PlayerID", 777777777).append("RID", "RID12345"));
+        mockListDocs(tHUBPromotionRuleOutComeCollection, "RID", "RID12345", Arrays.asList());
 
         Document result = awardCalculationService.calculateAward(tAwards);
 
@@ -241,29 +184,24 @@ class AwardCalculationServiceTest {
         Document tAwards = new Document("TrainId", "TR123456")
                 .append("TranId", "10002877609")
                 .append("PrizeId", 1210017247)
-                .append("PlayerID", 777777777)
-                .append("TranCodeID", 5)
+                .append("PlayerId", 777777777) // Match PlayerId
+                .append("TranCodeId", 5)
                 .append("Doc", "P")
                 .append("RID", "PID123");
 
-        Document hubDoc = new Document("PlayerID", 777777777).append("RID", "targetRID");
-        FindIterable<Document> hubIterable = mock(FindIterable.class);
-        when(hubIterable.first()).thenReturn(hubDoc);
-        List<Document> pidDocs = Arrays.asList(
+        // Mock all collections
+        mockSingleDoc(tPlayerStubCollection, "TrainId", "TR123456", new Document("TrainId", "TR123456"));
+        mockSingleDoc(tPlayerPromoCollection, "TrainId", "TR123456", new Document("TrainId", "TR123456"));
+        mockListDocs(tPlayerPointsCollection, "TranId", "10002877609", Arrays.asList(new Document("TranId", "10002877609")));
+        mockSingleDoc(tPrizeCollection, "PrizeId", 1210017247, new Document("PrizeId", 1210017247));
+        mockSingleDoc(tPrizeLocnMappingCollection, "PrizeId", 1210017247, new Document("PrizeId", 1210017247));
+        mockSingleDoc(memberProfileCollection, "player_id", 777777777, new Document("player_id", 777777777).append("member_no", "M123"));
+        mockSingleDoc(tTranCodeCollection, "TranCodeId", 5, new Document("TranCodeId", 5));
+        mockSingleDoc(tHUBPromotionRuleOutComeCollection, "PlayerID", 777777777, new Document("PlayerID", 777777777).append("RID", "targetRID"));
+        mockListDocs(tHUBPromotionRuleOutComeCollection, "RID", "targetRID", Arrays.asList(
                 new Document("PID", "PID123"),
                 new Document("PID", "PID456")
-        );
-        FindIterable<Document> pidIterable = mock(FindIterable.class);
-        when(pidIterable.into(any())).thenReturn(pidDocs);
-        when(tHUBPromotionRuleOutComeCollection.find(new Document("PlayerID", 777777777))).thenReturn(hubIterable);
-        when(tHUBPromotionRuleOutComeCollection.find(new Document("RID", "targetRID"))).thenReturn(pidIterable);
-
-        mockCollection(tPlayerStubCollection, "TrainId", "TR123456");
-        mockCollection(tPlayerPromoCollection, "TrainId", "TR123456");
-        mockCollection(tPlayerPointsCollection, "TranId", "10002877609", true);
-        mockCollection(tPrizeCollection, "PrizeId", 1210017247);
-        mockCollection(tPrizeLocnMappingCollection, "PrizeId", 1210017247);
-        mockCollection(memberProfileCollection, "player_id", 777777777);
+        ));
 
         Document result = awardCalculationService.calculateAward(tAwards);
 
@@ -271,39 +209,10 @@ class AwardCalculationServiceTest {
         assertEquals(4, result.getInteger("award_prize_type"));
     }
 
-    private void mockCollection(MongoCollection<Document> collection, String field, Object value, boolean isList) {
-        if (isList) {
-            List<Document> docs = Arrays.asList(new Document(field, value));
-            FindIterable<Document> iterable = mock(FindIterable.class);
-            MongoCursor<Document> cursor = mock(MongoCursor.class);
-            when(iterable.iterator()).thenReturn(cursor);
-            when(cursor.hasNext()).thenReturn(true, false);
-            when(cursor.next()).thenReturn(docs.get(0));
-            when(collection.find(any(Bson.class))).thenReturn(iterable);
-        } else {
-            Document doc = new Document(field, value);
-            FindIterable<Document> iterable = mock(FindIterable.class);
-            when(iterable.first()).thenReturn(doc);
-            when(collection.find(any(Bson.class))).thenReturn(iterable);
-        }
-    }
-
-
-
-    private void mockCollection(MongoCollection<Document> collection, String field, Object value) {
-        mockCollection(collection, field, value, false);
-    }
-
-    @BeforeEach
-    void setUpToSnakeCase() {
-        awardCalculationService = new AwardCalculationService(null, "testDatabase");
-    }
-
     @Test
     void testToSnakeCase() throws Exception {
         Method method = AwardCalculationService.class.getDeclaredMethod("toSnakeCase", String.class);
         method.setAccessible(true);
-        System.out.printf("in the testToSnakeCase function\n");
         assertEquals("prize_code", method.invoke(awardCalculationService, "PrizeCode"));
         assertEquals("prize_name", method.invoke(awardCalculationService, "PrizeName"));
         assertEquals("award_code", method.invoke(awardCalculationService, "AwardCode"));
@@ -313,10 +222,30 @@ class AwardCalculationServiceTest {
         assertEquals("is_max_prizes_per_trip", method.invoke(awardCalculationService, "IsMaxPrizesPerTrip"));
         assertEquals("_ods_replay_switch", method.invoke(awardCalculationService, "_ODS_replay_switch"));
         assertEquals("hub_promotion_id", method.invoke(awardCalculationService, "HUBPromotionID"));
-        System.out.printf("the test case result: %s\n", method.invoke(awardCalculationService, "HUBPromotionID"));
     }
 
+    // Updated helper methods to mock collections
+    private void mockSingleDoc(MongoCollection<Document> collection, String field, Object value, Document doc) {
+        FindIterable<Document> iterable = mock(FindIterable.class);
+        when(iterable.first()).thenReturn(doc);
+        when(collection.find(new Document(field, value))).thenReturn(iterable); // Ensure find() returns iterable
+    }
 
-  
-    
+    private void mockListDocs(MongoCollection<Document> collection, String field, Object value, List<Document> docs) {
+        FindIterable<Document> iterable = mock(FindIterable.class);
+        when(iterable.into(any())).thenReturn(docs);
+        when(collection.find(new Document(field, value))).thenReturn(iterable); // Ensure find() returns iterable
+
+        MongoCursor<Document> cursor = mock(MongoCursor.class);
+        when(iterable.iterator()).thenReturn(cursor);
+        if (docs.isEmpty()) {
+            when(cursor.hasNext()).thenReturn(false);
+        } else {
+            Boolean[] hasNextSequence = new Boolean[docs.size() + 1];
+            for (int i = 0; i < docs.size(); i++) hasNextSequence[i] = true;
+            hasNextSequence[docs.size()] = false;
+            when(cursor.hasNext()).thenReturn(true, hasNextSequence);
+            when(cursor.next()).thenReturn(docs.get(0), docs.toArray(new Document[0]));
+        }
+    }
 }
