@@ -56,9 +56,9 @@ public class AwardCalculationService {
         Document memberAward = convertToSnakeCase(filterFields(tAwards, Set.of("_id")));
 
         // Populate related collections
-        Document playerStub = getFilteredAndConvertedDocument(tPlayerStub, "TrainId", tAwards.get("TrainId"));
+        Document playerStub = getFilteredAndConvertedDocument(tPlayerStub, "TranId", tAwards.get("TranId"));
         memberAward.put("player_stub", playerStub);
-        Document playerPromo = getFilteredAndConvertedDocument(tPlayerPromo, "TrainId", tAwards.get("TrainId"));
+        Document playerPromo = getFilteredAndConvertedDocument(tPlayerPromo, "TranId", tAwards.get("TranId"));
         memberAward.put("player_promo", playerPromo);
         Document tranCode = getFilteredAndConvertedDocument(tTranCode, "TranCodeId", tAwards.get("TranCodeId"), Set.of("TranCodeId", "TranCode", "TranName", "TranType", "ItemCode"));
         memberAward.put("tran_code", tranCode); 
@@ -94,6 +94,9 @@ public class AwardCalculationService {
 
         // Calculate and add expire_date
         memberAward.put("expire_date", calculateExpireDate(prize, tAwards));
+
+
+        memberAward.put("gaming_date", tAwards.get("GamingDt"));
 
 
         memberAward.append("_ODS_modified_dtm", new Date())       // Always update modified timestamp

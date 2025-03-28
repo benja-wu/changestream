@@ -57,19 +57,18 @@ class AwardCalculationServiceTest {
 
     @Test
     void testCalculateAward() {
-        Document tAwards = new Document("TrainId", "TR123456")
-                .append("TranId", "10002877609")
+        Document tAwards = new Document("TranId", "TR123456")
                 .append("PrizeId", 1210017247)
                 .append("PlayerId", 777777777) // Match PlayerId as used in calculatePrizeType
                 .append("TranCodeId", 10)
                 .append("Doc", "P");
 
         // Mock all collections
-        mockSingleDoc(tPlayerStubCollection, "TrainId", "TR123456", new Document("TrainId", "TR123456").append("StubValue", 10));
-        mockSingleDoc(tPlayerPromoCollection, "TrainId", "TR123456", new Document("TrainId", "TR123456").append("PromoValue", 20));
-        mockListDocs(tPlayerPointsCollection, "TranId", "10002877609", Arrays.asList(
-                new Document("TranId", "10002877609").append("Pts", 50),
-                new Document("TranId", "10002877609").append("Pts", 30)
+        mockSingleDoc(tPlayerStubCollection, "TranId", "TR123456", new Document("TranId", "TR123456").append("StubValue", 10));
+        mockSingleDoc(tPlayerPromoCollection, "TranId", "TR123456", new Document("TranId", "TR123456").append("PromoValue", 20));
+        mockListDocs(tPlayerPointsCollection, "TranId", "TR123456", Arrays.asList(
+                new Document("TranId", "TR123456").append("Pts", 50),
+                new Document("TranId", "TR123456").append("Pts", 30)
         ));
         mockSingleDoc(tPrizeCollection, "PrizeId", 1210017247, new Document("PrizeId", 1210017247)
                 .append("PrizeCode", "ABCDEFG")
@@ -87,8 +86,7 @@ class AwardCalculationServiceTest {
         Document result = awardCalculationService.calculateAward(tAwards);
 
         assertNotNull(result);
-        assertEquals("TR123456", result.getString("train_id"));
-        assertEquals("10002877609", result.getString("tran_id"));
+        assertEquals("TR123456", result.getString("tran_id"));
         assertEquals(2, result.getInteger("award_prize_type"));
         assertEquals(true, result.getBoolean("is_doc_pmprize"));
         assertEquals("888888888", result.getString("member_no"));
@@ -103,17 +101,16 @@ class AwardCalculationServiceTest {
 
     @Test
     void testCalculateAwardPrizeTypeTranCode11() {
-        Document tAwards = new Document("TrainId", "TR123456")
-                .append("TranId", "10002877609")
+        Document tAwards = new Document("TranId", "TR123456")
                 .append("PrizeId", 1210017247)
                 .append("PlayerId", 777777777) // Match PlayerId
                 .append("TranCodeId", 11)
                 .append("Doc", "P");
 
         // Mock all collections
-        mockSingleDoc(tPlayerStubCollection, "TrainId", "TR123456", new Document("TrainId", "TR123456"));
-        mockSingleDoc(tPlayerPromoCollection, "TrainId", "TR123456", new Document("TrainId", "TR123456"));
-        mockListDocs(tPlayerPointsCollection, "TranId", "10002877609", Arrays.asList(new Document("TranId", "10002877609")));
+        mockSingleDoc(tPlayerStubCollection, "TranId", "TR123456", new Document("TranId", "TR123456"));
+        mockSingleDoc(tPlayerPromoCollection, "TranId", "TR123456", new Document("TranId", "TR123456"));
+        mockListDocs(tPlayerPointsCollection, "TranId", "TR123456", Arrays.asList(new Document("TranId", "TR123456")));
         mockSingleDoc(tPrizeCollection, "PrizeId", 1210017247, new Document("PrizeId", 1210017247));
         mockSingleDoc(tPrizeLocnMappingCollection, "PrizeId", 1210017247, new Document("PrizeId", 1210017247));
         mockSingleDoc(memberProfileCollection, "player_id", 777777777, new Document("player_id", 777777777).append("member_no", "M123"));
@@ -129,17 +126,16 @@ class AwardCalculationServiceTest {
 
     @Test
     void testCalculateAwardPrizeTypeTranCode12() {
-        Document tAwards = new Document("TrainId", "TR123456")
-                .append("TranId", "10002877609")
+        Document tAwards = new Document("TranId", "TR123456")
                 .append("PrizeId", 1210017247)
                 .append("PlayerId", 777777777) // Match PlayerId
                 .append("TranCodeId", 12)
                 .append("Doc", "P");
 
         // Mock all collections
-        mockSingleDoc(tPlayerStubCollection, "TrainId", "TR123456", new Document("TrainId", "TR123456"));
-        mockSingleDoc(tPlayerPromoCollection, "TrainId", "TR123456", new Document("TrainId", "TR123456"));
-        mockListDocs(tPlayerPointsCollection, "TranId", "10002877609", Arrays.asList(new Document("TranId", "10002877609")));
+        mockSingleDoc(tPlayerStubCollection, "TranId", "TR123456", new Document("TranId", "TR123456"));
+        mockSingleDoc(tPlayerPromoCollection, "TranId", "TR123456", new Document("TranId", "TR123456"));
+        mockListDocs(tPlayerPointsCollection, "TranId", "TR123456", Arrays.asList(new Document("TranId", "TR123456")));
         mockSingleDoc(tPrizeCollection, "PrizeId", 1210017247, new Document("PrizeId", 1210017247));
         mockSingleDoc(tPrizeLocnMappingCollection, "PrizeId", 1210017247, new Document("PrizeId", 1210017247));
         mockSingleDoc(memberProfileCollection, "player_id", 777777777, new Document("player_id", 777777777).append("member_no", "M123"));
@@ -155,17 +151,16 @@ class AwardCalculationServiceTest {
 
     @Test
     void testCalculateAwardPrizeTypeTranCode4() {
-        Document tAwards = new Document("TrainId", "TR123456")
-                .append("TranId", "10002877609")
+        Document tAwards = new Document("TranId", "TR123456")
                 .append("PrizeId", 1210017247)
                 .append("PlayerId", 777777777) // Match PlayerId
                 .append("TranCodeId", 4)
                 .append("Doc", "P");
 
         // Mock all collections
-        mockSingleDoc(tPlayerStubCollection, "TrainId", "TR123456", new Document("TrainId", "TR123456"));
-        mockSingleDoc(tPlayerPromoCollection, "TrainId", "TR123456", new Document("TrainId", "TR123456"));
-        mockListDocs(tPlayerPointsCollection, "TranId", "10002877609", Arrays.asList(new Document("TranId", "10002877609")));
+        mockSingleDoc(tPlayerStubCollection, "TranId", "TR123456", new Document("TranId", "TR123456"));
+        mockSingleDoc(tPlayerPromoCollection, "TranId", "TR123456", new Document("TranId", "TR123456"));
+        mockListDocs(tPlayerPointsCollection, "TranId", "TR123456", Arrays.asList(new Document("TranId", "TR123456")));
         mockSingleDoc(tPrizeCollection, "PrizeId", 1210017247, new Document("PrizeId", 1210017247));
         mockSingleDoc(tPrizeLocnMappingCollection, "PrizeId", 1210017247, new Document("PrizeId", 1210017247));
         mockSingleDoc(memberProfileCollection, "player_id", 777777777, new Document("player_id", 777777777).append("member_no", "M123"));
@@ -181,8 +176,7 @@ class AwardCalculationServiceTest {
 
     @Test
     void testCalculateAwardPrizeType4() {
-        Document tAwards = new Document("TrainId", "TR123456")
-                .append("TranId", "10002877609")
+        Document tAwards = new Document("TranId", "TR123456")
                 .append("PrizeId", 1210017247)
                 .append("PlayerId", 777777777) // Match PlayerId
                 .append("TranCodeId", 5)
@@ -190,9 +184,9 @@ class AwardCalculationServiceTest {
                 .append("RID", "PID123");
 
         // Mock all collections
-        mockSingleDoc(tPlayerStubCollection, "TrainId", "TR123456", new Document("TrainId", "TR123456"));
-        mockSingleDoc(tPlayerPromoCollection, "TrainId", "TR123456", new Document("TrainId", "TR123456"));
-        mockListDocs(tPlayerPointsCollection, "TranId", "10002877609", Arrays.asList(new Document("TranId", "10002877609")));
+        mockSingleDoc(tPlayerStubCollection, "TranId", "TR123456", new Document("TranId", "TR123456"));
+        mockSingleDoc(tPlayerPromoCollection, "TranId", "TR123456", new Document("TranId", "TR123456"));
+        mockListDocs(tPlayerPointsCollection, "TranId", "TR123456", Arrays.asList(new Document("TranId", "TR123456")));
         mockSingleDoc(tPrizeCollection, "PrizeId", 1210017247, new Document("PrizeId", 1210017247));
         mockSingleDoc(tPrizeLocnMappingCollection, "PrizeId", 1210017247, new Document("PrizeId", 1210017247));
         mockSingleDoc(memberProfileCollection, "player_id", 777777777, new Document("player_id", 777777777).append("member_no", "M123"));

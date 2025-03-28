@@ -36,14 +36,14 @@ public class hub_tPlayerPromo extends BusinessTask {
     @Override
     public int processChange(ChangeStreamDocument<Document> event) {
         MongoDatabase database = mongoClient.getDatabase(databaseName);
-        MongoCollection<Document> tAwardsCollection = database.getCollection("tAwards");
+        MongoCollection<Document> tAwardsCollection = database.getCollection("hub_tAwards");
         MongoCollection<Document> memberAwardsCollection = database.getCollection("member_awards");
 
         Document tPlayerPromo = event.getFullDocument();
         if (tPlayerPromo == null) return 0;
 
-        // Retrieve corresponding tAwards using TrainId
-        Document tAwards = tAwardsCollection.find(new Document("TrainId", tPlayerPromo.get("TrainId"))).first();
+        // Retrieve corresponding tAwards using TranId
+        Document tAwards = tAwardsCollection.find(new Document("TranId", tPlayerPromo.get("TranId"))).first();
         if (tAwards == null) return 0;
         Document query = new Document("tran_id", tAwards.get("TranId")).append("_ODS_schema", AwardCalculationService.ODS_SCHEMA_VERSION);
 

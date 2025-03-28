@@ -42,7 +42,7 @@ public class hub_tPromotionRedemption extends BusinessTask {
     @Override
     public int processChange(ChangeStreamDocument<Document> event) {
         MongoDatabase database = mongoClient.getDatabase(databaseName);
-        MongoCollection<Document> tAwardsCollection = database.getCollection("tAwards");
+        MongoCollection<Document> tAwardsCollection = database.getCollection("hub_tAwards");
         MongoCollection<Document> memberAwardsCollection = database.getCollection("member_awards");
 
         Document tPromotionRedemption = event.getFullDocument();
